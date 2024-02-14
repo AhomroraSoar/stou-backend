@@ -310,13 +310,18 @@ app.get("/swn", async function (req, res, next) {
 });
 
 app.get("/swn/:swn_id", async function (req, res, next) {
-  let connection = await create_connection();
-  const swn_id = req.params.swn_id;
-  let [rows] = await connection.query(
-    "SELECT * FROM `club` INNER JOIN `swn` ON club.swn_id = swn.swn_id WHERE club.swn_id = ?",
-    [swn_id]
-  );
-  return res.json(rows);
+  try {
+    let connection = await create_connection();
+    const swn_id = req.params.swn_id;
+    let [rows] = await connection.query(
+      "SELECT * FROM `club` WHERE club.swn_id = ?",
+      [swn_id]
+    );
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 app.get("/categorizedpd/:category_id", async function (req, res, next) {
