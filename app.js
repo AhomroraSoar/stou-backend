@@ -184,6 +184,40 @@ app.post("/login", jsonParser, async function (req, res, next) {
   }
 });
 
+app.post("/reset-password", jsonParser, async (req, res) => {
+  let connection = await create_connection();
+  const { email, newPassword } = req.body;
+
+  try {
+    console.log('Attempting to execute query...');
+    // Check if the email exists in the database
+    const [rows] = await connection.execute("SELECT * FROM user WHERE email = ?", [email]);
+    
+    // If the email does not exist, return an error
+    if (rows.length === 0) {
+      return res.status(404).json({ 
+        status:"error",
+        message: "ไม่พบ email ของผู้ใช้ในระบบ" 
+      });
+    }
+
+    // Hash the new password before updating the database
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update the user's password in the database
+    await connection.execute("UPDATE user SET password = ? WHERE email = ?", [hashedPassword, email]);
+
+    // Send a success response
+    res.status(200).json({
+      status:"ok",
+      });
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 // CRUD user in database
 
 app.get("/roles", async function (req, res, next) {
@@ -210,25 +244,6 @@ app.get("/users/:user_id", async function (req, res, next) {
   return res.json(rows[0]);
 });
 
-// app.post("/create", async (req, res, next) => {
-//   let connection = await create_connection();
-//   let [results] = await connection.query(
-//     "INSERT INTO `user`(`user_name`, `user_age`, `email`, `password`) VALUES (?, ?, ?, ?)",
-//     [
-//       req.body.user_name,
-//       req.body.user_age,
-//       req.body.email,
-//       req.body.password,
-//     ]
-//   );
-//   console.log(results);
-//   return res.json({
-//     status: "ok",
-//     message:
-//       "User with USER_ID : " + results.insertId + " is created successfully.",
-//     results,
-//   });
-// });
 
 app.put("/update", async function (req, res, next) {
   let connection = await create_connection();
@@ -314,7 +329,7 @@ app.get("/swn/:swn_id", async function (req, res, next) {
     let connection = await create_connection();
     const swn_id = req.params.swn_id;
     let [rows] = await connection.query(
-      "SELECT * FROM `club` WHERE club.swn_id = ?",
+      "SELECT * FROM `club` JOIN swn ON club.swn_id = swn.swn_id WHERE club.swn_id = ?",
       [swn_id]
     );
     return res.json(rows);
