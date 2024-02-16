@@ -131,12 +131,14 @@ app.post("/register", jsonParser, async (req, res, next) => {
   // insert new users to database
 
   let [register] = await connection.query(
-    "INSERT INTO `user`(`user_id`, `user_name`, `user_age`, `user_career`, `user_address`, `email`, `password`, `user_tel`) VALUES (?,?,?,?,?,?,?,?)",
+    "INSERT INTO `user`(`user_id`, `user_name`, `user_age`, `user_career`,`department`,`program`, `user_address`, `email`, `password`, `user_tel`) VALUES (?,?,?,?,?,?,?,?,?,?)",
     [
       req.body.user_id,
       req.body.user_name,
       req.body.user_age,
       req.body.user_career,
+      req.body.department,
+      req.body.program,
       req.body.user_address,
       req.body.email,
       hash_password,
@@ -331,6 +333,21 @@ app.get("/swn/:swn_id", async function (req, res, next) {
     let [rows] = await connection.query(
       "SELECT * FROM `club` JOIN swn ON club.swn_id = swn.swn_id WHERE club.swn_id = ?",
       [swn_id]
+    );
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.get("/club/:club_id", async function (req, res, next) {
+  try {
+    let connection = await create_connection();
+    const club_id = req.params.club_id;
+    let [rows] = await connection.query(
+      "SELECT * FROM `activity` JOIN club ON activity.club_id = club.club_id WHERE activity.club_id = ?",
+      [club_id]
     );
     return res.json(rows);
   } catch (error) {
