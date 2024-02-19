@@ -356,6 +356,21 @@ app.get("/club/:club_id", async function (req, res, next) {
   }
 });
 
+app.get("/activity/:activity_id", async function (req, res, next) {
+  try {
+    let connection = await create_connection();
+    const activity_id = req.params.activity_id;
+    let [rows] = await connection.query(
+      "SELECT user.user_id,user.user_name FROM `user` JOIN activity_paticipant ON activity_paticipant.user_id=user.user_id WHERE activity_paticipant.activity_id = ?",
+      [activity_id]
+    );
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 app.get("/categorizedpd/:category_id", async function (req, res, next) {
   let connection = await create_connection();
   const category_id = req.params.category_id;
