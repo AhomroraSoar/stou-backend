@@ -13,6 +13,7 @@ const bcrypt = require("bcrypt");
 const saltRounds = 10;
 app.use(cors());
 app.use(express.json());
+app.use(jsonParser);
 
 const create_connection = async () => {
   try {
@@ -302,6 +303,7 @@ app.put("/updateProfile", async function (req, res, next) {
     });
   }
 });
+
 app.delete("/delete", async function (req, res, next) {
   let connection = await create_connection();
   let [rows, err] = await connection.query(
@@ -377,6 +379,83 @@ app.get("/club/:club_id/teacher", async function (req, res, next) {
     const club_id = req.params.club_id;
     let [rows] = await connection.query(
       "SELECT user.user_id, user.user_name FROM `user` JOIN club_member ON club_member.user_id = user.user_id WHERE club_member.club_id = ? AND user.role_id = 2;",
+      [club_id]
+    );
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.get("/club/:club_id/committee", async function (req, res, next) {
+  try {
+    let connection = await create_connection();
+    const club_id = req.params.club_id;
+    let [rows] = await connection.query(
+      "SELECT committee_role.committee_role_name, user.user_id, user.user_name FROM committee_role INNER JOIN club_committee ON committee_role.committee_role_id = club_committee.committee_role_id INNER JOIN user ON club_committee.user_id = user.user_id WHERE club_committee.club_id = ?;",
+      [club_id]
+    );
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.post('/club/:club_id/register', jsonParser, async (req, res) => {
+  try {
+    const clubId = req.params.club_id;
+    const userData = req.headers['user'];
+
+    if (!clubId || !userData) {
+      throw new Error('Club ID and User data are required');
+    }
+
+    // Process the user data (assuming it's already a JSON string)
+    const userDataObj = JSON.parse(userData);
+
+    // Assuming you're using a MySQL database and mysql package for database interaction
+    const connection = await create_connection();
+
+    // Check if the user is already registered for the club
+    const [existingRegistrations] = await connection.query("SELECT * FROM club_member WHERE club_id = ? AND user_id = ?", [clubId, userDataObj.user_id]);
+
+    // If the user is already registered, return an error
+    if (existingRegistrations.length > 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'User is already registered for this club'
+      });
+    }
+
+    // If the user is not already registered, insert the new registration
+    await connection.query("INSERT INTO club_member (club_id, user_id) VALUES (?, ?)", [clubId, userDataObj.user_id]);
+
+    // Send success response
+    res.status(200).json({
+      status: 'ok',
+      message: 'User registered to the club successfully'
+    });
+
+  } catch (error) {
+    console.error('Error registering user to the club:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+});
+
+
+
+
+app.get("/clubmember/:club_id", async function (req, res, next) {
+  try {
+    let connection = await create_connection();
+    const club_id = req.params.club_id;
+    let [rows] = await connection.query(
+      "SELECT user.user_id,user.user_name FROM `user` JOIN club_member ON club_member.user_id=user.user_id WHERE club_member.club_id = ?",
       [club_id]
     );
     return res.json(rows);
