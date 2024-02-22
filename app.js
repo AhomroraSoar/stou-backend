@@ -247,63 +247,6 @@ app.get("/users/:user_id", async function (req, res, next) {
   return res.json(rows[0]);
 });
 
-
-app.put("/update", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "UPDATE `users` SET `fname`= ?, `lname`= ?, `email`= ?, `password`= ?, `avatar`= ?, `contact`= ?, `role_id`= ? WHERE user_id = ?",
-    [
-      req.body.fname,
-      req.body.lname,
-      req.body.email,
-      req.body.password,
-      req.body.avatar,
-      req.body.contact,
-      req.body.role_id,
-      req.body.user_id,
-    ]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.user_id;
-  return res.json({
-    status: "ok",
-    message: "User with USER_ID : " + id + " is updated successfully.",
-    rows,
-  });
-});
-
-app.put("/updateProfile", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "UPDATE `users` SET `fname`= ?, `lname`= ?, `avatar`= ?, `contact`= ? WHERE user_id = ?",
-    [
-      req.body.fname,
-      req.body.lname,
-      req.body.avatar,
-      req.body.contact,
-      req.body.user_id,
-    ]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.user_id;
-  if (rows.affectedRows == 1) {
-    return res.json({
-      status: "ok",
-      message: "User with USER_ID : " + id + " is updated successfully.",
-      rows,
-    });
-  } else {
-    return res.json({
-      error: "User with USER_ID : " + id + " is not updated successfully.",
-      err,
-    });
-  }
-});
-
 app.delete("/delete", async function (req, res, next) {
   let connection = await create_connection();
   let [rows, err] = await connection.query(
@@ -321,7 +264,6 @@ app.delete("/delete", async function (req, res, next) {
   });
 });
 
-// CRUD Products
 app.get("/swn", async function (req, res, next) {
   let connection = await create_connection();
   let [rows] = await connection.query("SELECT * FROM `swn`");
@@ -378,7 +320,7 @@ app.get("/club/:club_id/teacher", async function (req, res, next) {
     let connection = await create_connection();
     const club_id = req.params.club_id;
     let [rows] = await connection.query(
-      "SELECT user.user_id, user.user_name FROM `user` JOIN club_member ON club_member.user_id = user.user_id WHERE club_member.club_id = ? AND user.role_id = 2;",
+      "SELECT user.user_id, user.user_name FROM `user` JOIN club_advisor ON club_advisor.user_id = user.user_id WHERE club_advisor.club_id = ? ;",
       [club_id]
     );
     return res.json(rows);
@@ -412,30 +354,21 @@ app.post('/club/:club_id/register', jsonParser, async (req, res) => {
       throw new Error('Club ID and User data are required');
     }
 
-    // Process the user data (assuming it's already a JSON string)
     const userDataObj = JSON.parse(userData);
-
-    // Assuming you're using a MySQL database and mysql package for database interaction
     const connection = await create_connection();
-
-    // Check if the user is already registered for the club
     const [existingRegistrations] = await connection.query("SELECT * FROM club_member WHERE club_id = ? AND user_id = ?", [clubId, userDataObj.user_id]);
 
-    // If the user is already registered, return an error
     if (existingRegistrations.length > 0) {
       return res.status(400).json({
-        status: 'error',
-        message: 'User is already registered for this club'
+        status: 'registered',
+        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} เป็นสมาชิกอยู่แล้ว`
       });
     }
-
-    // If the user is not already registered, insert the new registration
     await connection.query("INSERT INTO club_member (club_id, user_id) VALUES (?, ?)", [clubId, userDataObj.user_id]);
 
-    // Send success response
     res.status(200).json({
       status: 'ok',
-      message: 'User registered to the club successfully'
+      message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} ลงทะเบียนเข้าร่วมชมรมเรียบร้อย`
     });
 
   } catch (error) {
@@ -446,8 +379,6 @@ app.post('/club/:club_id/register', jsonParser, async (req, res) => {
     });
   }
 });
-
-
 
 
 app.get("/clubmember/:club_id", async function (req, res, next) {
