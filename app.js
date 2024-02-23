@@ -270,11 +270,17 @@ app.get("/swn", async function (req, res, next) {
   return res.json(rows);
 });
 
+app.get("/teacherlist",async function (req,res,next){
+  let connection = await create_connection();
+  let [rows] = await connection.query("SELECT user.user_id, user.user_name, user.department, user.user_tel, user.lineID ,club.club_name FROM user JOIN club_advisor ON club_advisor.user_id = user.user_id JOIN club ON club_advisor.club_id = club.club_id;");
+  return res.json(rows);
+});
+
 app.get("/swn/:swn_id", async function (req, res, next) {
   try {
     let connection = await create_connection();
     const swn_id = req.params.swn_id;
-    let [rows] = await connection.query(
+    let [rows] = await connection.query( 
       "SELECT * FROM `club` JOIN swn ON club.swn_id = swn.swn_id WHERE club.swn_id = ?",
       [swn_id]
     );
@@ -293,7 +299,7 @@ app.get("/club/:club_id", async function (req, res, next) {
       "SELECT * FROM `activity` JOIN club ON activity.club_id = club.club_id WHERE activity.club_id = ?",
       [club_id]
     );
-    return res.json(rows);
+    return res.json(rows);  
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -305,7 +311,7 @@ app.get("/activity/:activity_id", async function (req, res, next) {
     let connection = await create_connection();
     const activity_id = req.params.activity_id;
     let [rows] = await connection.query(
-      "SELECT user.user_id,user.user_name FROM `user` JOIN activity_paticipant ON activity_paticipant.user_id=user.user_id WHERE activity_paticipant.activity_id = ?",
+      "SELECT user.user_id,user.user_name,activity.club_id FROM `user` JOIN activity_paticipant ON activity_paticipant.user_id=user.user_id JOIN activity ON activity_paticipant.activity_id = activity.activity_id WHERE activity_paticipant.activity_id = ?",
       [activity_id]
     );
     return res.json(rows);
@@ -357,13 +363,20 @@ app.post('/club/:club_id/register', jsonParser, async (req, res) => {
     const userDataObj = JSON.parse(userData);
     const connection = await create_connection();
     const [existingRegistrations] = await connection.query("SELECT * FROM club_member WHERE club_id = ? AND user_id = ?", [clubId, userDataObj.user_id]);
+    const [memberofother] = await connection.query("SELECT * FROM club_member WHERE user_id = ?", [userDataObj.user_id]);
 
     if (existingRegistrations.length > 0) {
       return res.status(400).json({
         status: 'registered',
-        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} เป็นสมาชิกอยู่แล้ว`
+        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} เป็นสมาชิกชมรมนี้อยู่แล้ว`
+      });
+    } else if (memberofother.length > 0) {
+      return res.status(400).json({
+        status: 'registered',
+        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} เป็นสมาชิกชมรมอื่นอยู่แล้ว`
       });
     }
+
     await connection.query("INSERT INTO club_member (club_id, user_id) VALUES (?, ?)", [clubId, userDataObj.user_id]);
 
     res.status(200).json({
