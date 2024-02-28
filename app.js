@@ -85,17 +85,6 @@ app.post("/auth", function (req, res, next) {
   }
 });
 
-// app.post("/auth", authenticateJWT, (req, res, next) => {
-//   const user_id = req.users.user_id;
-//   connection.query(
-//     "SELECT * FROM `users` WHERE `user_id` = ?",
-//     [user_id],
-//     function (err, results) {
-//       res.json(results[0]);
-//     }
-//   );
-// });
-
 app.post("/auth/user", authenticateJWT, (req, res) => {
   const email = req.user.email;
   connection.query(
@@ -229,14 +218,6 @@ app.get("/roles", async function (req, res, next) {
   return res.json(rows);
 });
 
-app.get("/user", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows] = await connection.query(
-    "SELECT * FROM user "
-  );
-  return res.json(rows);
-});
-
 app.get("/users/:user_id", async function (req, res, next) {
   let connection = await create_connection();
   const user_id = req.params.user_id;
@@ -304,6 +285,16 @@ app.get("/club/:club_id", async function (req, res, next) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
+});
+
+app.get("/clubname/:club_id", async function (req, res, next) {
+  let connection = await create_connection();
+  const club_id = req.params.club_id;
+  let [rows] = await connection.query(
+    "SELECT * FROM `club` WHERE `club_id` = ?",
+    [club_id]
+  );
+  return res.json(rows[0]);
 });
 
 app.get("/activity/:activity_id", async function (req, res, next) {
@@ -409,303 +400,53 @@ app.get("/clubmember/:club_id", async function (req, res, next) {
   }
 });
 
-app.get("/categorizedpd/:category_id", async function (req, res, next) {
-  let connection = await create_connection();
-  const category_id = req.params.category_id;
-  let [rows] = await connection.query(
-    "SELECT * FROM `products` WHERE category_id = ?",
-    [category_id]
-  );
-  return res.json(rows);
-});
-
-app.get("/sumQuan", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows] = await connection.query(
-    "SELECT SUM(`Quantity`) AS TotalQuantity FROM `products`"
-  );
-
-  return res.json(rows[0]);
-});
-
-app.post("/createpd", async (req, res, next) => {
-  let connection = await create_connection();
-  let [results] = await connection.query(
-    "INSERT INTO `products`(`product_name`, `description`, `product_picture`, `Quantity`) VALUES (?, ?, ?, ?)",
-    [
-      req.body.product_name,
-      req.body.description,
-      req.body.product_picture,
-      req.body.Quantity,
-    ]
-  );
-  console.log(results);
-  return res.json({
-    status: "ok",
-    message:
-      "Product with id : " + results.insertId + " is created successfully.",
-    results,
-  });
-});
-app.put("/updatepd", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "UPDATE `products` SET `product_name`= ?, `description`= ?, `product_picture`= ?, `Quantity`= ?,`category_id`= ? WHERE product_id = ?",
-    [
-      req.body.product_name,
-      req.body.description,
-      req.body.product_picture,
-      req.body.Quantity,
-      req.body.category_id,
-      req.body.product_id,
-    ]
-  );
-  if (err) {
-    res.json({ error: err });
+app.get("/activitydetail/:activity_id", async function (req, res, next) {
+  try {
+    let connection = await create_connection();
+    const activity_id = req.params.activity_id;
+    let [rows] = await connection.query(
+      "SELECT * FROM `activity` JOIN `activity_type` ON activity.activity_type_id = activity_type.activity_type_id WHERE activity_id = ?",
+      [activity_id]
+    );
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
-  const id = req.body.product_id;
-  return res.json({
-    status: "ok",
-    message: "Product with product_id : " + id + " is updated successfully.",
-    rows,
-  });
-});
-app.delete("/deletepd", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "DELETE FROM `products` WHERE product_id = ?",
-    [req.body.product_id]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.product_id;
-  return res.json({
-    status: "ok",
-    message: "Product with product_id : " + id + " is deleted successfully.",
-    rows,
-  });
 });
 
-// CRUD Category
-// READ All Category
-app.get("/category", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows] = await connection.query("SELECT * FROM `categories`");
-  return res.json(rows);
-});
+app.post('/activity/:activity_id/register', jsonParser, async (req, res) => {
+  try {
+    const activityID = req.params.activity_id;
+    const userData = req.headers['user'];
 
-// READ BY ID
-app.get("/category/:category_id", async function (req, res, next) {
-  let connection = await create_connection();
-  const category_id = req.params.category_id;
-  let [rows] = await connection.query(
-    "SELECT * FROM `categories` WHERE `category_id` = ?",
-    [category_id]
-  );
-  return res.json(rows[0]);
-});
-
-// CREATE Category
-app.post("/createcategory", async (req, res, next) => {
-  let connection = await create_connection();
-  let [results] = await connection.query(
-    "INSERT INTO `categories`(`category_name`, `image`) VALUES (?, ?)",
-    [req.body.category_name, req.body.image]
-  );
-  console.log(results);
-  return res.json({
-    status: "ok",
-    message:
-      "Category with id : " + results.insertId + " is created successfully.",
-    results,
-  });
-});
-
-// UPDATE Category
-app.put("/updatecategory", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "UPDATE `categories` SET `category_name`= ?, `image`= ? WHERE category_id = ?",
-    [req.body.category_name, req.body.image, req.body.category_id]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.category_id;
-  return res.json({
-    status: "ok",
-    message: "Category with category_id : " + id + " is updated successfully.",
-    rows,
-  });
-});
-
-// DELETE Category
-app.delete("/deletecategory", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "DELETE FROM `categories` WHERE category_id = ?",
-    [req.body.category_id]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.category_id;
-  return res.json({
-    status: "ok",
-    message: "Category with category_id : " + id + " is deleted successfully.",
-    rows,
-  });
-});
-
-// CRUD Tags
-// READ ALL Tags
-app.get("/tags", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows] = await connection.query(
-    "SELECT * FROM tags LEFT JOIN products ON tags.product_id = products.product_id"
-  );
-  return res.json(rows);
-});
-
-app.get("/connectedTags", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows] = await connection.query(
-    "SELECT * FROM tags LEFT JOIN products ON tags.product_id = products.product_id WHERE tags.product_id IS NOT NULL"
-  );
-  return res.json(rows);
-});
-// READ BY ID
-app.get("/tags/:tag_id", async function (req, res, next) {
-  let connection = await create_connection();
-  const tag_id = req.params.tag_id;
-  let [rows] = await connection.execute(
-    "SELECT * FROM `tags` WHERE `tag_id` = ?",
-    [tag_id]
-  );
-  return res.json(rows[0]);
-});
-// READ BY Multi tagID
-app.get("/Multags/:tag_id", async function (req, res, next) {
-  let connection = await create_connection();
-  const tag_id = req.params.tag_id;
-  var values = "";
-  values = values + "(" + tag_id + ")";
-  console.log(values);
-  let [rows] = await connection.execute(
-    "SELECT * FROM `tags` WHERE tag_id IN " + values
-  );
-  return res.json(rows);
-});
-// CREATE Tags
-app.post("/createtag", async (req, res, next) => {
-  let connection = await create_connection();
-  let [results] = await connection.query(
-    "INSERT IGNORE INTO `tags`(`tag_detail`) VALUES (?)",
-    [req.body.tag_detail]
-  );
-  console.log(results);
-  return res.json({
-    status: "ok",
-    message: "Tag with id : " + results.insertId + " is created successfully.",
-    results,
-  });
-});
-// UPDATE Tags
-app.put("/updatetag", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "UPDATE `tags` SET `product_id`= ? WHERE tag_id = ?",
-    [req.body.product_id, req.body.tag_id]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.tag_id;
-  return res.json({
-    status: "ok",
-    message: "Tag with tag_id : " + id + " is updated successfully.",
-    rows,
-  });
-});
-// UPDATE Multiple Tags
-app.put("/updateMultag", async function (req, res, next) {
-  const tag = req.body.tag_id;
-  var values = "";
-  values = values + "(" + tag + ")";
-  console.log(values);
-  let connection = await create_connection();
-
-  let query = "UPDATE `tags` SET `product_id`= ? WHERE tag_id IN " + values;
-  let [rows] = await connection.query(
-    query,
-    [req.body.product_id],
-    (error, results) => {
-      if (error) throw error;
-      console.log(error || results);
+    if (!activityID || !userData) {
+      throw new Error('activity ID and User data are required');
     }
-  );
 
-  if (rows.affectedRows == 0) {
-    return res.json({
-      status: "error",
-      message: "Tag with tag_id : " + tag + " isn't updated.",
-      rows,
+    const userDataObj = JSON.parse(userData);
+    const connection = await create_connection();
+    const [existingRegistrations] = await connection.query("SELECT * FROM activity_paticipant WHERE activity_id = ? AND user_id = ?", [activityID, userDataObj.user_id])
+
+    if (existingRegistrations.length > 0) {
+      return res.status(400).json({
+        status: 'registered',
+        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} ได้ลงทะเบียนเข้าร่วมกิจกรรมนี้อยู่แล้ว`
+      });
+    }
+
+    await connection.query("INSERT INTO activity_paticipant (activity_id, user_id) VALUES (?, ?)", [activityID, userDataObj.user_id]);
+
+    res.status(200).json({
+      status: 'ok',
+      message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} ลงทะเบียนเข้าร่วมกิจกรรมเรียบร้อย`
     });
-  } else {
-    return res.json({
-      status: "ok",
-      message: "Tag with tag_id : " + tag + " is updated successfully.",
-      rows,
-    });
-  }
-});
-// DELETE Tags
-app.delete("/deletetag", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "DELETE FROM `tags` WHERE tag_id = ?",
-    [req.body.tag_id]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.tag_id;
-  return res.json({
-    status: "ok",
-    message: "Tag with tag_id : " + id + " is deleted successfully.",
-    rows,
-  });
-});
 
-// DELETE Multiple Tags
-app.delete("/deleteMultag", async function (req, res, next) {
-  var data = req.body;
-  console.log(data);
-  var values = "";
-  values = values + "(" + data + ")";
-  console.log(values);
-
-  let connection = await create_connection();
-  let query = "DELETE FROM tags WHERE tag_id IN " + values;
-  let [rows] = await connection.query(query, [], (error, results) => {
-    if (error) throw error;
-    console.log(error || results);
-  });
-
-  console.log(query);
-  const id = req.body;
-  if (rows.affectedRows == 0) {
-    return res.json({
-      status: "error",
-      message: "Tag with tag_id : " + id + " isn't delete.",
-      rows,
-    });
-  } else if (rows.affectedRows == 1) {
-    return res.json({
-      status: "ok",
-      message: "Tag with tag_id : " + id + " is deleted successfully.",
-      rows,
+  } catch (error) {
+    console.error('Error registering user to the activity:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
     });
   }
 });
