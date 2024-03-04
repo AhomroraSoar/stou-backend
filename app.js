@@ -1,7 +1,7 @@
 var express = require("express");
 var cors = require("cors");
 var bodyParser = require("body-parser");
-const mysql = require("mysql2/promise");
+const sql = require("mssql");
 const PORT = process.env.PORT || 4000;
 
 var connection = {};
@@ -15,36 +15,40 @@ app.use(cors());
 app.use(express.json());
 app.use(jsonParser);
 
+const config = {
+  user: 'StuAff',
+  password: '@abc#123',
+  server: '172.20.24.11',
+  database: 'StuAffDB',
+  options: {
+    encrypt: false,
+    trustedConnection: true
+  }
+};
+
 const create_connection = async () => {
   try {
-    const connection = await mysql.createConnection({
-      host: "localhost",
-      user: "root",
-      database: "stou",
-    });
+    // Create connection pool
+    const pool = await sql.connect(config);
     
-    // Attempt to execute a simple query to check the connection
-    await connection.execute('SELECT 1');
+    console.log('Connected to SQL Server database successfully!');
     
-    console.log('Connected to MySQL database successfully!');
-    
-    return connection; // Return the connection object
+    return pool; // Return the connection pool object
   } catch (error) {
-    console.error('Error connecting to MySQL database:', error);
-    throw error; // Rethrow the error
+    console.error('Error connecting to SQL Server database:', error);
   }
 };
 
 // Check connection
 create_connection()
-  .then((connection) => {
+  .then((pool) => {
     // Connection is already checked inside create_connection function
     // You can perform any additional operations here if needed
+    connection = pool;
   })
   .catch((err) => {
-    console.error('Error creating MySQL connection:', err);
+    console.error('Error creating SQL Server connection:', err);
   });
-
 
 
 const authenticateJWT = (req, res, next) => {
@@ -88,7 +92,7 @@ app.post("/auth", function (req, res, next) {
 app.post("/auth/user", authenticateJWT, (req, res) => {
   const email = req.user.email;
   connection.query(
-    "SELECT * FROM `user` WHERE `email` = ?",
+    "SELECT * FROM `users` WHERE `email` = ?",
     [email],
     function (err, results) {
       res.json(results);
@@ -96,100 +100,131 @@ app.post("/auth/user", authenticateJWT, (req, res) => {
   );
 });
 
-app.post("/register", jsonParser, async (req, res, next) => {
-  let connection = await create_connection();
+app.post("/register", jsonParser, async (req, res) => {
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
 
-  var email = req.body.email;
-  var values = "";
-  values = values + "'" + email + "'";
+    const email = req.body.email;
 
-  let query = "SELECT email FROM user WHERE email = " + values;
-  let [rows] = await connection.query(query, [], (error, results) => {
-    if (error) throw error;
-    console.log(error || results);
-  });
-  console.log(query);
-  if (rows.length > 0) {
-    return res.json({
-      status: "registered",
-      message: "Email นี้มีข้อมูลอยู่ในระบบอยู่แล้ว",
-      rows,
-    });
+    // Check if email already exists in the database
+    let query = `SELECT email FROM users WHERE email = '${email}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "Email already exists in the system",
+        email: email
+      });
+    }
+
+    // Hash the password
+    const hash_password = await bcrypt.hash(req.body.password, saltRounds);
+
+    // Insert new user into the database
+    query = `
+    INSERT INTO users (user_id, user_name, user_age, user_career, department, program, user_address, email, password, user_tel) 
+    VALUES (
+      '${req.body.user_id}',
+      '${req.body.user_name}',
+      ${req.body.user_age},
+      '${req.body.user_career}',
+      '${req.body.department}',
+      '${req.body.program}',
+      '${req.body.user_address}',
+      '${email}',
+      '${hash_password}',
+      '${req.body.user_tel}'
+    )`;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "User registered successfully",
+        user_id: req.body.user_id // Use the provided user_id
+      });
+    } else {
+      throw new Error("User registration failed");
+    }
+  } catch (error) {
+    console.error('Error during registration:', error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
   }
-
-  let hash_password = await bcrypt.hash(req.body.password, saltRounds);
-  // insert new users to database
-
-  let [register] = await connection.query(
-    "INSERT INTO `user`(`user_id`, `user_name`, `user_age`, `user_career`,`department`,`program`, `user_address`, `email`, `password`, `user_tel`) VALUES (?,?,?,?,?,?,?,?,?,?)",
-    [
-      req.body.user_id,
-      req.body.user_name,
-      req.body.user_age,
-      req.body.user_career,
-      req.body.department,
-      req.body.program,
-      req.body.user_address,
-      req.body.email,
-      hash_password,
-      req.body.user_tel
-    ]
-  );
-
-  return res.json({
-    status: "ok",
-    message:
-      "บัญชีผู้ใช้รหัสประจำตัว : " +
-      req.body.user_id +
-      " ลงทะเบียนเรียบร้อย",
-    register,
-  });
 });
 
 app.post("/login", jsonParser, async function (req, res, next) {
-  let connection = await create_connection();
-  let [user] = await connection.query("SELECT * FROM `user` WHERE `email` = ?", [
-    req.body.email,
-]);
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
 
-  if (user.length == 0) {0
-    res.json({ status: "error", message: "ไม่พบ Email ในระบบ" });
-    return;
-  }
+    // Query user by email
+    const result = await connection.query`SELECT * FROM users WHERE [email] = ${req.body.email}`;
+    const user = result.recordset;
 
-  const match = await bcrypt.compare(req.body.password, user[0].password);
-  if (match) {
-    var token = jwt.sign({ email: user[0].email }, secret, {
-      expiresIn: "1h",
-    });
-    res.json({
-      status: "success",
-      message: "ยินดีต้อนรับ",
-      token,
-      user: user[0],
-    });
-  } else {
-    res.json({
-      status: "Invalid password",
-      message: "รหัสผ่านไม่ถูกต้อง",
-    });
+    if (user.length === 0) {
+      return res.json({ status: "error", message: "Email not found in the system" });
+    }
+
+    // Compare passwords
+    const match = await bcrypt.compare(req.body.password, user[0].password);
+    if (match) {
+      const token = jwt.sign({ email: user[0].email }, secret, { expiresIn: "1h" });
+      return res.json({
+        status: "success",
+        message: "Welcome",
+        token,
+        user: user[0],
+      });
+    } else {
+      return res.json({ status: "error", message: "Invalid password" });
+    }
+  } catch (error) {
+    console.error('Error during login:', error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
   }
 });
 
+
 app.post("/reset-password", jsonParser, async (req, res) => {
-  let connection = await create_connection();
+  let connection;
   const { email, newPassword } = req.body;
 
   try {
-    console.log('Attempting to execute query...');
+    // Create connection
+    connection = await create_connection();
+
     // Check if the email exists in the database
-    const [rows] = await connection.execute("SELECT * FROM user WHERE email = ?", [email]);
-    
+    const result = await connection.query`SELECT * FROM users WHERE [email] = ${email}`;
+    const rows = result.recordset;
+
     // If the email does not exist, return an error
     if (rows.length === 0) {
       return res.status(404).json({ 
-        status:"error",
-        message: "ไม่พบ email ของผู้ใช้ในระบบ" 
+        status: "error",
+        message: "Email not found in the system" 
       });
     }
 
@@ -197,115 +232,184 @@ app.post("/reset-password", jsonParser, async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
     // Update the user's password in the database
-    await connection.execute("UPDATE user SET password = ? WHERE email = ?", [hashedPassword, email]);
+    await connection.query`UPDATE [users] SET [password] = ${hashedPassword} WHERE [email] = ${email}`;
 
     // Send a success response
-    res.status(200).json({
-      status:"ok",
-      });
+    res.status(200).json({ status: "ok" });
   } catch (error) {
     console.error("Error resetting password:", error);
     res.status(500).json({ error: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
   }
 });
 
-
-// CRUD user in database
-
-app.get("/roles", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows] = await connection.query("SELECT * FROM `roles`");
-  return res.json(rows);
-});
-
-app.get("/users/:user_id", async function (req, res, next) {
-  let connection = await create_connection();
-  const user_id = req.params.user_id;
-  let [rows] = await connection.query(
-    "SELECT * FROM `users` LEFT JOIN roles ON users.role_id = roles.role_id WHERE `user_id` = ?",
-    [user_id]
-  );
-  return res.json(rows[0]);
-});
-
-app.delete("/delete", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows, err] = await connection.query(
-    "DELETE FROM `users` WHERE user_id = ?",
-    [req.body.user_id]
-  );
-  if (err) {
-    res.json({ error: err });
-  }
-  const id = req.body.user_id;
-  return res.json({
-    status: "ok",
-    message: "User with USER_ID : " + id + " is deleted successfully.",
-    rows,
-  });
-});
+// app.delete("/delete", async function (req, res, next) {
+//   let connection = await create_connection();
+//   let [rows, err] = await connection.query(
+//     "DELETE FROM `users` WHERE user_id = ?",
+//     [req.body.user_id]
+//   );
+//   if (err) {
+//     res.json({ error: err });
+//   }
+//   const id = req.body.user_id;
+//   return res.json({
+//     status: "ok",
+//     message: "User with USER_ID : " + id + " is deleted successfully.",
+//     rows,
+//   });
+// });
 
 app.get("/swn", async function (req, res, next) {
-  let connection = await create_connection();
-  let [rows] = await connection.query("SELECT * FROM `swn`");
-  return res.json(rows);
+  let connection;
+  try {
+    connection = await create_connection();
+
+    const result = await connection.query`SELECT * FROM [swn]`;
+    const rows = result.recordset;
+
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data from "swn" table:', error);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
+  }
 });
 
-app.get("/teacherlist",async function (req,res,next){
-  let connection = await create_connection();
-  let [rows] = await connection.query("SELECT user.user_id, user.user_name, user.department, user.user_tel, user.lineID ,club.club_name FROM user JOIN club_advisor ON club_advisor.user_id = user.user_id JOIN club ON club_advisor.club_id = club.club_id;");
-  return res.json(rows);
+app.get("/teacherlist", async function (req, res) {
+  try {
+    // Create connection
+    let connection = await create_connection();
+
+    // Query to fetch teacher list along with club information
+    let query = `
+      SELECT users.user_id, users.user_name, users.department, users.user_tel, users.lineID, club.club_name 
+      FROM users
+      JOIN club_advisor ON club_advisor.user_id = users.user_id
+      JOIN club ON club_advisor.club_id = club.club_id
+    `;
+
+    // Execute the query
+    let result = await connection.query(query);
+
+    // Send response with the fetched rows
+    return res.json(result.recordset);
+  } catch (error) {
+    console.error("Error fetching teacher list:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
+
+
 
 app.get("/swn/:swn_id", async function (req, res, next) {
   try {
-    let connection = await create_connection();
     const swn_id = req.params.swn_id;
-    let [rows] = await connection.query( 
-      "SELECT * FROM `club` JOIN swn ON club.swn_id = swn.swn_id WHERE club.swn_id = ?",
-      [swn_id]
-    );
-    return res.json(rows);
+    const query = `
+      SELECT * FROM club 
+      JOIN swn ON club.swn_id = swn.swn_id 
+      WHERE club.swn_id = @swn_id
+    `;
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+
+    const result = await connection.request()
+      .input('swn_id', sql.Int, swn_id)
+      .query(query);
+    
+    return res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+
 
 app.get("/club/:club_id", async function (req, res, next) {
   try {
-    let connection = await create_connection();
+    // Assuming you already have a connection object named 'connection'
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+    
     const club_id = req.params.club_id;
-    let [rows] = await connection.query(
-      "SELECT * FROM `activity` JOIN club ON activity.club_id = club.club_id WHERE activity.club_id = ?",
-      [club_id]
-    );
-    return res.json(rows);  
+    const query = `
+      SELECT * FROM activity 
+      JOIN club ON activity.club_id = club.club_id 
+      WHERE activity.club_id = @club_id
+    `;
+    
+    const result = await connection.request()
+      .input('club_id', sql.Int, club_id)
+      .query(query);
+
+    // No need to close the connection if it's managed elsewhere in your code
+    
+    return res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
+
 app.get("/clubname/:club_id", async function (req, res, next) {
-  let connection = await create_connection();
-  const club_id = req.params.club_id;
-  let [rows] = await connection.query(
-    "SELECT * FROM `club` WHERE `club_id` = ?",
-    [club_id]
-  );
-  return res.json(rows[0]);
+  try {
+    const club_id = req.params.club_id;
+    const query = `
+      SELECT * FROM club WHERE club_id = @club_id
+    `;
+    
+    // Assuming you already have a connection object named 'connection'
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+    
+    const result = await connection.request()
+      .input('club_id', sql.Int, club_id)
+      .query(query);
+
+    // No need to close the connection if it's managed elsewhere in your code
+    
+    return res.json(result.recordset[0]);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 app.get("/activity/:activity_id", async function (req, res, next) {
   try {
-    let connection = await create_connection();
     const activity_id = req.params.activity_id;
-    let [rows] = await connection.query(
-      "SELECT user.user_id,user.user_name,activity.club_id FROM `user` JOIN activity_paticipant ON activity_paticipant.user_id=user.user_id JOIN activity ON activity_paticipant.activity_id = activity.activity_id WHERE activity_paticipant.activity_id = ?",
-      [activity_id]
-    );
-    return res.json(rows);
+    const query = `
+      SELECT users.user_id, users.user_name, activity.club_id 
+      FROM users
+      JOIN activity_participants ON activity_participants.user_id = users.user_id 
+      JOIN activity ON activity_participants.activity_id = activity.activity_id 
+      WHERE activity_participants.activity_id = @activity_id
+    `;
+    
+    // Assuming you already have a connection object named 'connection'
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+    
+    const result = await connection.request()
+      .input('activity_id', sql.Int, activity_id)
+      .query(query);
+
+    // No need to close the connection if it's managed elsewhere in your code
+    
+    return res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -314,13 +418,24 @@ app.get("/activity/:activity_id", async function (req, res, next) {
 
 app.get("/club/:club_id/teacher", async function (req, res, next) {
   try {
-    let connection = await create_connection();
     const club_id = req.params.club_id;
-    let [rows] = await connection.query(
-      "SELECT user.user_id, user.user_name FROM `user` JOIN club_advisor ON club_advisor.user_id = user.user_id WHERE club_advisor.club_id = ? ;",
-      [club_id]
-    );
-    return res.json(rows);
+    const query = `
+      SELECT users.user_id, users.user_name 
+      FROM users
+      JOIN club_advisor ON club_advisor.user_id = users.user_id 
+      WHERE club_advisor.club_id = @club_id
+    `;
+    
+    // Assuming you already have a connection object named 'connection'
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+    
+    const result = await connection.request()
+      .input('club_id', sql.Int, club_id)
+      .query(query);
+
+    // No need to close the connection if it's managed elsewhere in your code
+    
+    return res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -329,13 +444,25 @@ app.get("/club/:club_id/teacher", async function (req, res, next) {
 
 app.get("/club/:club_id/committee", async function (req, res, next) {
   try {
-    let connection = await create_connection();
     const club_id = req.params.club_id;
-    let [rows] = await connection.query(
-      "SELECT committee_role.committee_role_name, user.user_id, user.user_name FROM committee_role INNER JOIN club_committee ON committee_role.committee_role_id = club_committee.committee_role_id INNER JOIN user ON club_committee.user_id = user.user_id WHERE club_committee.club_id = ?;",
-      [club_id]
-    );
-    return res.json(rows);
+    const query = `
+      SELECT committee_role.committee_role_name, users.user_id, users.user_name 
+      FROM committee_role 
+      INNER JOIN club_committee ON committee_role.committee_role_id = club_committee.committee_role_id 
+      INNER JOIN users ON club_committee.user_id = users.user_id 
+      WHERE club_committee.club_id = @club_id
+    `;
+    
+    // Assuming you already have a connection object named 'connection'
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+    
+    const result = await connection.request()
+      .input('club_id', sql.Int, club_id)
+      .query(query);
+
+    // No need to close the connection if it's managed elsewhere in your code
+    
+    return res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -345,34 +472,44 @@ app.get("/club/:club_id/committee", async function (req, res, next) {
 app.post('/club/:club_id/register', jsonParser, async (req, res) => {
   try {
     const clubId = req.params.club_id;
-    const userData = req.headers['user'];
+    const userDataHeader = req.headers['user'];
 
-    if (!clubId || !userData) {
+    if (!clubId || !userDataHeader) {
       throw new Error('Club ID and User data are required');
     }
 
-    const userDataObj = JSON.parse(userData);
+    const userData = JSON.parse(userDataHeader);
+
     const connection = await create_connection();
-    const [existingRegistrations] = await connection.query("SELECT * FROM club_member WHERE club_id = ? AND user_id = ?", [clubId, userDataObj.user_id]);
-    const [memberofother] = await connection.query("SELECT * FROM club_member WHERE user_id = ?", [userDataObj.user_id]);
+
+    const request = connection.request();
+    request.input('club_id', sql.Int, clubId);
+    request.input('user_id', sql.VarChar, userData.user_id); // Adjust type to VARCHAR
+
+    const existingRegistrationsResult = await request.query("SELECT * FROM club_member WHERE club_id = @club_id AND user_id = @user_id");
+    const memberOfOtherResult = await request.query("SELECT * FROM club_member WHERE user_id = @user_id");
+
+    const existingRegistrations = existingRegistrationsResult.recordset;
+    const memberOfOther = memberOfOtherResult.recordset;
+
 
     if (existingRegistrations.length > 0) {
       return res.status(400).json({
         status: 'registered',
-        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} เป็นสมาชิกชมรมนี้อยู่แล้ว`
+        message: `User with ID ${userData.user_id} is already a member of this club`
       });
-    } else if (memberofother.length > 0) {
+    } else if (memberOfOther.length > 0) {
       return res.status(400).json({
         status: 'registered',
-        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} เป็นสมาชิกชมรมอื่นอยู่แล้ว`
+        message: `User with ID ${userData.user_id} is already a member of another club`
       });
     }
 
-    await connection.query("INSERT INTO club_member (club_id, user_id) VALUES (?, ?)", [clubId, userDataObj.user_id]);
+    await request.query("INSERT INTO club_member (club_id, user_id) VALUES (@club_id, @user_id)");
 
     res.status(200).json({
       status: 'ok',
-      message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} ลงทะเบียนเข้าร่วมชมรมเรียบร้อย`
+      message: `User with ID ${userData.user_id} successfully registered to the club`
     });
 
   } catch (error) {
@@ -385,15 +522,23 @@ app.post('/club/:club_id/register', jsonParser, async (req, res) => {
 });
 
 
+
 app.get("/clubmember/:club_id", async function (req, res, next) {
   try {
-    let connection = await create_connection();
     const club_id = req.params.club_id;
-    let [rows] = await connection.query(
-      "SELECT user.user_id,user.user_name FROM `user` JOIN club_member ON club_member.user_id=user.user_id WHERE club_member.club_id = ?",
-      [club_id]
-    );
-    return res.json(rows);
+    const query = `
+      SELECT users.user_id, users.user_name 
+      FROM users 
+      JOIN club_member ON club_member.user_id = users.user_id 
+      WHERE club_member.club_id = @club_id
+    `;
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+
+    const result = await connection.request()
+      .input('club_id', sql.Int, club_id)
+      .query(query);
+    
+    return res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -402,13 +547,20 @@ app.get("/clubmember/:club_id", async function (req, res, next) {
 
 app.get("/activitydetail/:activity_id", async function (req, res, next) {
   try {
-    let connection = await create_connection();
     const activity_id = req.params.activity_id;
-    let [rows] = await connection.query(
-      "SELECT * FROM `activity` JOIN `activity_type` ON activity.activity_type_id = activity_type.activity_type_id WHERE activity_id = ?",
-      [activity_id]
-    );
-    return res.json(rows);
+    const query = `
+      SELECT * 
+      FROM activity 
+      JOIN activity_type ON activity.activity_type_id = activity_type.activity_type_id 
+      WHERE activity_id = @activity_id
+    `;
+    const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
+
+    const result = await connection.request()
+      .input('activity_id', sql.Int, activity_id)
+      .query(query);
+    
+    return res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching data:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -421,25 +573,35 @@ app.post('/activity/:activity_id/register', jsonParser, async (req, res) => {
     const userData = req.headers['user'];
 
     if (!activityID || !userData) {
-      throw new Error('activity ID and User data are required');
+      throw new Error('Activity ID and User data are required');
     }
 
     const userDataObj = JSON.parse(userData);
     const connection = await create_connection();
-    const [existingRegistrations] = await connection.query("SELECT * FROM activity_paticipant WHERE activity_id = ? AND user_id = ?", [activityID, userDataObj.user_id])
 
-    if (existingRegistrations.length > 0) {
+    // Create a new request object
+    const request = connection.request();
+
+    // Bind parameters
+    request.input('activityID', sql.Int, activityID);
+    request.input('user_id', sql.VarChar, userDataObj.user_id);
+
+    // Check if the user is already registered for the activity
+    const result = await request.query("SELECT * FROM activity_participants WHERE activity_id = @activityID AND user_id = @user_id");
+
+    if (result.recordset.length > 0) {
       return res.status(400).json({
         status: 'registered',
-        message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} ได้ลงทะเบียนเข้าร่วมกิจกรรมนี้อยู่แล้ว`
+        message: `User with ID ${userDataObj.user_id} is already registered for this activity`
       });
     }
 
-    await connection.query("INSERT INTO activity_paticipant (activity_id, user_id) VALUES (?, ?)", [activityID, userDataObj.user_id]);
+    // Insert the user as a participant for the activity
+    await request.query("INSERT INTO activity_participants (activity_id, user_id) VALUES (@activityID, @user_id)");
 
     res.status(200).json({
       status: 'ok',
-      message: `ผู้ใช้รหัสประจำตัว ${userDataObj.user_id} ลงทะเบียนเข้าร่วมกิจกรรมเรียบร้อย`
+      message: `User with ID ${userDataObj.user_id} successfully registered for the activity`
     });
 
   } catch (error) {
@@ -448,6 +610,57 @@ app.post('/activity/:activity_id/register', jsonParser, async (req, res) => {
       status: 'error',
       message: 'Internal server error'
     });
+  }
+});
+
+app.post("/createswn", async (req, res) => {
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    const swn_name = req.body.swn_name;
+
+    // Check if email already exists in the database
+    let query = `SELECT swn_name FROM swn WHERE swn_name = '${swn_name}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "this swn already exists in the system",
+        swn_name: swn_name
+      });
+    }
+
+    query = `
+  INSERT INTO swn (swn_name) 
+  VALUES ('${req.body.swn_name}')
+`;
+
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "เพิ่มศวน.เสร็จสิ้น",
+      });
+    } else {
+      throw new Error("เพิ่มศวน.ไม่สำเร็จ");
+    }
+  } catch (error) {
+    console.error('Error during registration:', error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
   }
 });
 
