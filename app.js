@@ -251,23 +251,6 @@ app.post("/reset-password", jsonParser, async (req, res) => {
   }
 });
 
-// app.delete("/delete", async function (req, res, next) {
-//   let connection = await create_connection();
-//   let [rows, err] = await connection.query(
-//     "DELETE FROM `users` WHERE user_id = ?",
-//     [req.body.user_id]
-//   );
-//   if (err) {
-//     res.json({ error: err });
-//   }
-//   const id = req.body.user_id;
-//   return res.json({
-//     status: "ok",
-//     message: "User with USER_ID : " + id + " is deleted successfully.",
-//     rows,
-//   });
-// });
-
 app.get("/swn", async function (req, res, next) {
   let connection;
   try {
@@ -621,39 +604,225 @@ app.post("/createswn", async (req, res) => {
 
     const swn_name = req.body.swn_name;
 
-    // Check if email already exists in the database
+    // Check if swn_name already exists in the database
     let query = `SELECT swn_name FROM swn WHERE swn_name = '${swn_name}'`;
     let result = await connection.query(query);
 
-    if (result.recordset.length > 0) {
+    if (result.length > 0) {
       return res.status(400).json({
         status: "registered",
-        message: "this swn already exists in the system",
+        message: "This SWN already exists in the system",
         swn_name: swn_name
       });
     }
 
     query = `
-  INSERT INTO swn (swn_name) 
-  VALUES ('${req.body.swn_name}')
-`;
-
+      INSERT INTO swn (swn_name) 
+      VALUES ('${req.body.swn_name}')
+    `;
 
     result = await connection.query(query);
 
     if (result.rowsAffected[0] === 1) {
       return res.status(200).json({
         status: "ok",
-        message: "เพิ่มศวน.เสร็จสิ้น",
+        message: "เพิ่มศูนย์วิทยบริการและชุมชนสัมพันธ์เรียบร้อยแล้ว"
       });
     } else {
-      throw new Error("เพิ่มศวน.ไม่สำเร็จ");
+      throw new Error("Failed to add SWN");
     }
   } catch (error) {
-    console.error('Error during registration:', error);
+    console.error('Error adding SWN:', error);
     return res.status(500).json({ status: "error", message: "Internal server error" });
   } finally {
     // Close connection
+    if (connection) {
+      try {
+        await connection.close(); 
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
+  }
+});
+
+app.post("/updateswn", jsonParser, async (req, res) => {
+  let connection;
+  const { swn_id, swn_name } = req.body;
+
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    // Check if the swn_id exists in the database
+    const result = await connection.query`SELECT * FROM swn WHERE [swn_id] = ${swn_id}`;
+    const rows = result.recordset;
+
+    // If the swn_id does not exist, return an error
+    if (rows.length === 0) {
+      return res.status(404).json({ 
+        status: "error",
+        message: "swn_id not found in the system" 
+      });
+    }
+
+    // Update the swn_name in the database
+    await connection.query`UPDATE [swn] SET [swn_name] = ${swn_name} WHERE [swn_id] = ${swn_id}`;
+
+    // Send a success response
+    res.status(200).json({ status: "ok" });
+  } catch (error) {
+    console.error("Error updating swn_name:", error);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
+  }
+});
+
+app.delete("/deleteswn", async function (req, res, next) {
+  let connection;
+  try {
+    connection = await create_connection();
+    const request = connection.request();
+    request.input('swn_id', req.body.swn_id);
+    
+    const result = await request.query("DELETE FROM swn WHERE swn_id = @swn_id");
+
+    return res.json({
+      status: "ok",
+      message: "ลบศูนย์วิทยาบริการและชุมชนสัมพันธ์เรียบร้อย",
+      rows: result.rowsAffected[0]
+    });
+  } catch (error) {
+    console.error('Error deleting SWN:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
+  }
+});
+
+app.post("/createclub/:swn_id", async (req, res) => {
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    const club_name = req.body.club_name;
+    const swn_id = req.params.swn_id;
+
+    // Check if swn_name already exists in the database
+    let query = `SELECT club_name FROM club WHERE club_name = '${club_name}'`;
+    let result = await connection.query(query);
+
+    if (result.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "This club already exists in the system",
+        club_name: club_name
+      });
+    }
+
+    query = `
+      INSERT INTO club (club_name,swn_id) 
+      VALUES ('${club_name}',${swn_id})
+    `;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "เพิ่มชมรมเรียบร้อยแล้ว"
+      });
+    } else {
+      throw new Error("Failed to add club");
+    }
+  } catch (error) {
+    console.error('Error adding club:', error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close(); 
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
+  }
+});
+
+app.post("/updateclub", jsonParser, async (req, res) => {
+  let connection;
+  const { club_id, club_name } = req.body;
+
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    // Check if the swn_id exists in the database
+    const result = await connection.query`SELECT * FROM club WHERE [club_id] = ${club_id}`;
+    const rows = result.recordset;
+
+    // If the swn_id does not exist, return an error
+    if (rows.length === 0) {
+      return res.status(404).json({ 
+        status: "error",
+        message: "club not found in the system" 
+      });
+    }
+
+    // Update the swn_name in the database
+    await connection.query`UPDATE [club] SET [club_name] = ${club_name} WHERE [club_id] = ${club_id}`;
+
+    // Send a success response
+    res.status(200).json({ status: "ok" });
+  } catch (error) {
+    console.error("Error updating club_name:", error);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
+  }
+});
+
+app.delete("/deleteclub", async function (req, res) {
+  let connection;
+  try {
+    connection = await create_connection();
+    const request = connection.request();
+    request.input('club_id', req.body.club_id);
+    
+    const result = await request.query("DELETE FROM club WHERE club_id = @club_id");
+
+    return res.json({
+      status: "ok",
+      message: "ลบชมรมเรียบร้อย",
+      rows: result.rowsAffected[0]
+    });
+  } catch (error) {
+    console.error('Error deleting Club:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  } finally {
     if (connection) {
       try {
         await connection.close();
