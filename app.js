@@ -833,6 +833,133 @@ app.delete("/deleteclub", async function (req, res) {
   }
 });
 
+app.post("/createactivity/:club_id", async (req, res) => {
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    const {
+      activity_name,
+      location,
+      province,
+      start_date,
+      finish_date,
+      facebook_contact,
+      line_contact,
+      activity_type_id,
+    } = req.body;
+
+    const club_id = req.params.club_id;
+
+    const checkQuery = `SELECT activity_name FROM activity WHERE activity_name = @activity_name`;
+    const checkRequest = new sql.Request(connection);
+    checkRequest.input('activity_name', sql.VarChar, activity_name);
+    const checkResult = await checkRequest.query(checkQuery);
+
+    if (checkResult.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "This activity already exists in the system",
+        activity_name: activity_name,
+      });
+    }
+
+    const insertQuery = `
+      INSERT INTO activity 
+      (activity_name, location, province, start_date, finish_date, facebook_contact, line_contact, activity_type_id, club_id) 
+      VALUES (@activity_name, @location, @province, @start_date, @finish_date, @facebook_contact, @line_contact, @activity_type_id, @club_id)
+    `;
+
+    const insertRequest = new sql.Request(connection);
+    insertRequest.input('activity_name', sql.VarChar, activity_name);
+    insertRequest.input('location', sql.VarChar, location);
+    insertRequest.input('province', sql.VarChar, province);
+    insertRequest.input('start_date', sql.DateTime, start_date);
+    insertRequest.input('finish_date', sql.DateTime, finish_date);
+    insertRequest.input('facebook_contact', sql.VarChar, facebook_contact);
+    insertRequest.input('line_contact', sql.VarChar, line_contact);
+    insertRequest.input('activity_type_id', sql.Int, activity_type_id);
+    insertRequest.input('club_id', sql.Int, club_id);
+
+    const insertResult = await insertRequest.query(insertQuery);
+
+    if (insertResult.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "Activity added successfully",
+      });
+    } else {
+      throw new Error("Failed to add activity");
+    }
+  } catch (error) {
+    console.error("Error adding activity:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.get("/activity_type", async function (req, res) {
+  let connection;
+  try {
+    connection = await create_connection();
+
+    const result = await connection.query`SELECT * FROM [activity_type]`;
+    const rows = result.recordset;
+
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data from "activity_type" table:', error);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error('Error closing connection:', error);
+      }
+    }
+  }
+});
+
+// app.delete("/deleteclub", async function (req, res) {
+//   let connection;
+//   try {
+//     connection = await create_connection();
+//     const request = connection.request();
+//     request.input('club_id', req.body.club_id);
+    
+//     const result = await request.query("DELETE FROM club WHERE club_id = @club_id");
+
+//     return res.json({
+//       status: "ok",
+//       message: "ลบชมรมเรียบร้อย",
+//       rows: result.rowsAffected[0]
+//     });
+//   } catch (error) {
+//     console.error('Error deleting Club:', error);
+//     return res.status(500).json({ error: 'Internal server error' });
+//   } finally {
+//     if (connection) {
+//       try {
+//         await connection.close();
+//       } catch (error) {
+//         console.error('Error closing connection:', error);
+//       }
+//     }
+//   }
+// });
+
 app.listen(PORT, async () => {
   console.log("CORS-enabled listening on port " + PORT);
 });
