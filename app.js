@@ -16,26 +16,26 @@ app.use(express.json());
 app.use(jsonParser);
 
 const config = {
-  user: 'StuAff',
-  password: '@abc#123',
-  server: '172.20.24.11',
-  database: 'StuAffDB',
+  user: "StuAff",
+  password: "@abc#123",
+  server: "172.20.24.11",
+  database: "StuAffDB",
   options: {
     encrypt: false,
-    trustedConnection: true
-  }
+    trustedConnection: true,
+  },
 };
 
 const create_connection = async () => {
   try {
     // Create connection pool
     const pool = await sql.connect(config);
-    
-    console.log('Connected to SQL Server database successfully!');
-    
+
+    console.log("Connected to SQL Server database successfully!");
+
     return pool; // Return the connection pool object
   } catch (error) {
-    console.error('Error connecting to SQL Server database:', error);
+    console.error("Error connecting to SQL Server database:", error);
   }
 };
 
@@ -47,9 +47,8 @@ create_connection()
     connection = pool;
   })
   .catch((err) => {
-    console.error('Error creating SQL Server connection:', err);
+    console.error("Error creating SQL Server connection:", err);
   });
-
 
 const authenticateJWT = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -116,7 +115,7 @@ app.post("/register", jsonParser, async (req, res) => {
       return res.status(400).json({
         status: "registered",
         message: "Email already exists in the system",
-        email: email
+        email: email,
       });
     }
 
@@ -145,21 +144,23 @@ app.post("/register", jsonParser, async (req, res) => {
       return res.status(200).json({
         status: "ok",
         message: "User registered successfully",
-        user_id: req.body.user_id // Use the provided user_id
+        user_id: req.body.user_id, // Use the provided user_id
       });
     } else {
       throw new Error("User registration failed");
     }
   } catch (error) {
-    console.error('Error during registration:', error);
-    return res.status(500).json({ status: "error", message: "Internal server error" });
+    console.error("Error during registration:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
   } finally {
     // Close connection
     if (connection) {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -172,17 +173,23 @@ app.post("/login", jsonParser, async function (req, res, next) {
     connection = await create_connection();
 
     // Query user by email
-    const result = await connection.query`SELECT * FROM users WHERE [email] = ${req.body.email}`;
+    const result =
+      await connection.query`SELECT * FROM users WHERE [email] = ${req.body.email}`;
     const user = result.recordset;
 
     if (user.length === 0) {
-      return res.json({ status: "error", message: "Email not found in the system" });
+      return res.json({
+        status: "error",
+        message: "Email not found in the system",
+      });
     }
 
     // Compare passwords
     const match = await bcrypt.compare(req.body.password, user[0].password);
     if (match) {
-      const token = jwt.sign({ email: user[0].email }, secret, { expiresIn: "1h" });
+      const token = jwt.sign({ email: user[0].email }, secret, {
+        expiresIn: "1h",
+      });
       return res.json({
         status: "success",
         message: "Welcome",
@@ -193,20 +200,21 @@ app.post("/login", jsonParser, async function (req, res, next) {
       return res.json({ status: "error", message: "Invalid password" });
     }
   } catch (error) {
-    console.error('Error during login:', error);
-    return res.status(500).json({ status: "error", message: "Internal server error" });
+    console.error("Error during login:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
   } finally {
     // Close connection
     if (connection) {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
 });
-
 
 app.post("/reset-password", jsonParser, async (req, res) => {
   let connection;
@@ -217,14 +225,15 @@ app.post("/reset-password", jsonParser, async (req, res) => {
     connection = await create_connection();
 
     // Check if the email exists in the database
-    const result = await connection.query`SELECT * FROM users WHERE [email] = ${email}`;
+    const result =
+      await connection.query`SELECT * FROM users WHERE [email] = ${email}`;
     const rows = result.recordset;
 
     // If the email does not exist, return an error
     if (rows.length === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         status: "error",
-        message: "Email not found in the system" 
+        message: "Email not found in the system",
       });
     }
 
@@ -245,7 +254,7 @@ app.post("/reset-password", jsonParser, async (req, res) => {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -268,7 +277,7 @@ app.get("/swn", async function (req, res, next) {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -298,8 +307,6 @@ app.get("/teacherlist", async function (req, res) {
   }
 });
 
-
-
 app.get("/swn/:swn_id", async function (req, res, next) {
   try {
     const swn_id = req.params.swn_id;
@@ -310,44 +317,43 @@ app.get("/swn/:swn_id", async function (req, res, next) {
     `;
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
 
-    const result = await connection.request()
-      .input('swn_id', sql.Int, swn_id)
+    const result = await connection
+      .request()
+      .input("swn_id", sql.Int, swn_id)
       .query(query);
-    
+
     return res.json(result.recordset);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
-
 
 app.get("/club/:club_id", async function (req, res, next) {
   try {
     // Assuming you already have a connection object named 'connection'
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
-    
+
     const club_id = req.params.club_id;
     const query = `
       SELECT * FROM activity 
       JOIN club ON activity.club_id = club.club_id 
       WHERE activity.club_id = @club_id
     `;
-    
-    const result = await connection.request()
-      .input('club_id', sql.Int, club_id)
+
+    const result = await connection
+      .request()
+      .input("club_id", sql.Int, club_id)
       .query(query);
 
     // No need to close the connection if it's managed elsewhere in your code
-    
+
     return res.json(result.recordset);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
 
 app.get("/clubname/:club_id", async function (req, res, next) {
   try {
@@ -355,20 +361,21 @@ app.get("/clubname/:club_id", async function (req, res, next) {
     const query = `
       SELECT * FROM club WHERE club_id = @club_id
     `;
-    
+
     // Assuming you already have a connection object named 'connection'
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
-    
-    const result = await connection.request()
-      .input('club_id', sql.Int, club_id)
+
+    const result = await connection
+      .request()
+      .input("club_id", sql.Int, club_id)
       .query(query);
 
     // No need to close the connection if it's managed elsewhere in your code
-    
+
     return res.json(result.recordset[0]);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -382,20 +389,21 @@ app.get("/activity/:activity_id", async function (req, res, next) {
       JOIN activity ON activity_participants.activity_id = activity.activity_id 
       WHERE activity_participants.activity_id = @activity_id
     `;
-    
+
     // Assuming you already have a connection object named 'connection'
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
-    
-    const result = await connection.request()
-      .input('activity_id', sql.Int, activity_id)
+
+    const result = await connection
+      .request()
+      .input("activity_id", sql.Int, activity_id)
       .query(query);
 
     // No need to close the connection if it's managed elsewhere in your code
-    
+
     return res.json(result.recordset);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -408,20 +416,21 @@ app.get("/club/:club_id/teacher", async function (req, res, next) {
       JOIN club_advisor ON club_advisor.user_id = users.user_id 
       WHERE club_advisor.club_id = @club_id
     `;
-    
+
     // Assuming you already have a connection object named 'connection'
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
-    
-    const result = await connection.request()
-      .input('club_id', sql.Int, club_id)
+
+    const result = await connection
+      .request()
+      .input("club_id", sql.Int, club_id)
       .query(query);
 
     // No need to close the connection if it's managed elsewhere in your code
-    
+
     return res.json(result.recordset);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -435,30 +444,31 @@ app.get("/club/:club_id/committee", async function (req, res, next) {
       INNER JOIN users ON club_committee.user_id = users.user_id 
       WHERE club_committee.club_id = @club_id
     `;
-    
+
     // Assuming you already have a connection object named 'connection'
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
-    
-    const result = await connection.request()
-      .input('club_id', sql.Int, club_id)
+
+    const result = await connection
+      .request()
+      .input("club_id", sql.Int, club_id)
       .query(query);
 
     // No need to close the connection if it's managed elsewhere in your code
-    
+
     return res.json(result.recordset);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-app.post('/club/:club_id/register', jsonParser, async (req, res) => {
+app.post("/club/:club_id/register", jsonParser, async (req, res) => {
   try {
     const clubId = req.params.club_id;
-    const userDataHeader = req.headers['user'];
+    const userDataHeader = req.headers["user"];
 
     if (!clubId || !userDataHeader) {
-      throw new Error('Club ID and User data are required');
+      throw new Error("Club ID and User data are required");
     }
 
     const userData = JSON.parse(userDataHeader);
@@ -466,45 +476,47 @@ app.post('/club/:club_id/register', jsonParser, async (req, res) => {
     const connection = await create_connection();
 
     const request = connection.request();
-    request.input('club_id', sql.Int, clubId);
-    request.input('user_id', sql.VarChar, userData.user_id); // Adjust type to VARCHAR
+    request.input("club_id", sql.Int, clubId);
+    request.input("user_id", sql.VarChar, userData.user_id); // Adjust type to VARCHAR
 
-    const existingRegistrationsResult = await request.query("SELECT * FROM club_member WHERE club_id = @club_id AND user_id = @user_id");
-    const memberOfOtherResult = await request.query("SELECT * FROM club_member WHERE user_id = @user_id");
+    const existingRegistrationsResult = await request.query(
+      "SELECT * FROM club_member WHERE club_id = @club_id AND user_id = @user_id"
+    );
+    const memberOfOtherResult = await request.query(
+      "SELECT * FROM club_member WHERE user_id = @user_id"
+    );
 
     const existingRegistrations = existingRegistrationsResult.recordset;
     const memberOfOther = memberOfOtherResult.recordset;
 
-
     if (existingRegistrations.length > 0) {
       return res.status(400).json({
-        status: 'registered',
-        message: `User with ID ${userData.user_id} is already a member of this club`
+        status: "registered",
+        message: `User with ID ${userData.user_id} is already a member of this club`,
       });
     } else if (memberOfOther.length > 0) {
       return res.status(400).json({
-        status: 'registered',
-        message: `User with ID ${userData.user_id} is already a member of another club`
+        status: "registered",
+        message: `User with ID ${userData.user_id} is already a member of another club`,
       });
     }
 
-    await request.query("INSERT INTO club_member (club_id, user_id) VALUES (@club_id, @user_id)");
+    await request.query(
+      "INSERT INTO club_member (club_id, user_id) VALUES (@club_id, @user_id)"
+    );
 
     res.status(200).json({
-      status: 'ok',
-      message: `User with ID ${userData.user_id} successfully registered to the club`
+      status: "ok",
+      message: `User with ID ${userData.user_id} successfully registered to the club`,
     });
-
   } catch (error) {
-    console.error('Error registering user to the club:', error);
+    console.error("Error registering user to the club:", error);
     res.status(500).json({
-      status: 'error',
-      message: 'Internal server error'
+      status: "error",
+      message: "Internal server error",
     });
   }
 });
-
-
 
 app.get("/clubmember/:club_id", async function (req, res, next) {
   try {
@@ -517,14 +529,15 @@ app.get("/clubmember/:club_id", async function (req, res, next) {
     `;
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
 
-    const result = await connection.request()
-      .input('club_id', sql.Int, club_id)
+    const result = await connection
+      .request()
+      .input("club_id", sql.Int, club_id)
       .query(query);
-    
+
     return res.json(result.recordset);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -539,24 +552,25 @@ app.get("/activitydetail/:activity_id", async function (req, res, next) {
     `;
     const connection = await create_connection(); // Assuming 'create_connection()' returns an active connection
 
-    const result = await connection.request()
-      .input('activity_id', sql.Int, activity_id)
+    const result = await connection
+      .request()
+      .input("activity_id", sql.Int, activity_id)
       .query(query);
-    
+
     return res.json(result.recordset);
   } catch (error) {
-    console.error('Error fetching data:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-app.post('/activity/:activity_id/register', jsonParser, async (req, res) => {
+app.post("/activity/:activity_id/register", jsonParser, async (req, res) => {
   try {
     const activityID = req.params.activity_id;
-    const userData = req.headers['user'];
+    const userData = req.headers["user"];
 
     if (!activityID || !userData) {
-      throw new Error('Activity ID and User data are required');
+      throw new Error("Activity ID and User data are required");
     }
 
     const userDataObj = JSON.parse(userData);
@@ -566,32 +580,35 @@ app.post('/activity/:activity_id/register', jsonParser, async (req, res) => {
     const request = connection.request();
 
     // Bind parameters
-    request.input('activityID', sql.Int, activityID);
-    request.input('user_id', sql.VarChar, userDataObj.user_id);
+    request.input("activityID", sql.Int, activityID);
+    request.input("user_id", sql.VarChar, userDataObj.user_id);
 
     // Check if the user is already registered for the activity
-    const result = await request.query("SELECT * FROM activity_participants WHERE activity_id = @activityID AND user_id = @user_id");
+    const result = await request.query(
+      "SELECT * FROM activity_participants WHERE activity_id = @activityID AND user_id = @user_id"
+    );
 
     if (result.recordset.length > 0) {
       return res.status(400).json({
-        status: 'registered',
-        message: `User with ID ${userDataObj.user_id} is already registered for this activity`
+        status: "registered",
+        message: `User with ID ${userDataObj.user_id} is already registered for this activity`,
       });
     }
 
     // Insert the user as a participant for the activity
-    await request.query("INSERT INTO activity_participants (activity_id, user_id) VALUES (@activityID, @user_id)");
+    await request.query(
+      "INSERT INTO activity_participants (activity_id, user_id) VALUES (@activityID, @user_id)"
+    );
 
     res.status(200).json({
-      status: 'ok',
-      message: `User with ID ${userDataObj.user_id} successfully registered for the activity`
+      status: "ok",
+      message: `User with ID ${userDataObj.user_id} successfully registered for the activity`,
     });
-
   } catch (error) {
-    console.error('Error registering user to the activity:', error);
+    console.error("Error registering user to the activity:", error);
     res.status(500).json({
-      status: 'error',
-      message: 'Internal server error'
+      status: "error",
+      message: "Internal server error",
     });
   }
 });
@@ -612,7 +629,7 @@ app.post("/createswn", async (req, res) => {
       return res.status(400).json({
         status: "registered",
         message: "This SWN already exists in the system",
-        swn_name: swn_name
+        swn_name: swn_name,
       });
     }
 
@@ -626,21 +643,23 @@ app.post("/createswn", async (req, res) => {
     if (result.rowsAffected[0] === 1) {
       return res.status(200).json({
         status: "ok",
-        message: "เพิ่มศูนย์วิทยบริการและชุมชนสัมพันธ์เรียบร้อยแล้ว"
+        message: "เพิ่มศูนย์วิทยบริการและชุมชนสัมพันธ์เรียบร้อยแล้ว",
       });
     } else {
       throw new Error("Failed to add SWN");
     }
   } catch (error) {
-    console.error('Error adding SWN:', error);
-    return res.status(500).json({ status: "error", message: "Internal server error" });
+    console.error("Error adding SWN:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
   } finally {
     // Close connection
     if (connection) {
       try {
-        await connection.close(); 
+        await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -655,14 +674,15 @@ app.post("/updateswn", jsonParser, async (req, res) => {
     connection = await create_connection();
 
     // Check if the swn_id exists in the database
-    const result = await connection.query`SELECT * FROM swn WHERE [swn_id] = ${swn_id}`;
+    const result =
+      await connection.query`SELECT * FROM swn WHERE [swn_id] = ${swn_id}`;
     const rows = result.recordset;
 
     // If the swn_id does not exist, return an error
     if (rows.length === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         status: "error",
-        message: "swn_id not found in the system" 
+        message: "swn_id not found in the system",
       });
     }
 
@@ -680,7 +700,7 @@ app.post("/updateswn", jsonParser, async (req, res) => {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -691,24 +711,26 @@ app.delete("/deleteswn", async function (req, res, next) {
   try {
     connection = await create_connection();
     const request = connection.request();
-    request.input('swn_id', req.body.swn_id);
-    
-    const result = await request.query("DELETE FROM swn WHERE swn_id = @swn_id");
+    request.input("swn_id", req.body.swn_id);
+
+    const result = await request.query(
+      "DELETE FROM swn WHERE swn_id = @swn_id"
+    );
 
     return res.json({
       status: "ok",
       message: "ลบศูนย์วิทยาบริการและชุมชนสัมพันธ์เรียบร้อย",
-      rows: result.rowsAffected[0]
+      rows: result.rowsAffected[0],
     });
   } catch (error) {
-    console.error('Error deleting SWN:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error("Error deleting SWN:", error);
+    return res.status(500).json({ error: "Internal server error" });
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -731,7 +753,7 @@ app.post("/createclub/:swn_id", async (req, res) => {
       return res.status(400).json({
         status: "registered",
         message: "This club already exists in the system",
-        club_name: club_name
+        club_name: club_name,
       });
     }
 
@@ -745,21 +767,23 @@ app.post("/createclub/:swn_id", async (req, res) => {
     if (result.rowsAffected[0] === 1) {
       return res.status(200).json({
         status: "ok",
-        message: "เพิ่มชมรมเรียบร้อยแล้ว"
+        message: "เพิ่มชมรมเรียบร้อยแล้ว",
       });
     } else {
       throw new Error("Failed to add club");
     }
   } catch (error) {
-    console.error('Error adding club:', error);
-    return res.status(500).json({ status: "error", message: "Internal server error" });
+    console.error("Error adding club:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
   } finally {
     // Close connection
     if (connection) {
       try {
-        await connection.close(); 
+        await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -774,14 +798,15 @@ app.post("/updateclub", jsonParser, async (req, res) => {
     connection = await create_connection();
 
     // Check if the swn_id exists in the database
-    const result = await connection.query`SELECT * FROM club WHERE [club_id] = ${club_id}`;
+    const result =
+      await connection.query`SELECT * FROM club WHERE [club_id] = ${club_id}`;
     const rows = result.recordset;
 
     // If the swn_id does not exist, return an error
     if (rows.length === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         status: "error",
-        message: "club not found in the system" 
+        message: "club not found in the system",
       });
     }
 
@@ -799,7 +824,7 @@ app.post("/updateclub", jsonParser, async (req, res) => {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -810,24 +835,26 @@ app.delete("/deleteclub", async function (req, res) {
   try {
     connection = await create_connection();
     const request = connection.request();
-    request.input('club_id', req.body.club_id);
-    
-    const result = await request.query("DELETE FROM club WHERE club_id = @club_id");
+    request.input("club_id", req.body.club_id);
+
+    const result = await request.query(
+      "DELETE FROM club WHERE club_id = @club_id"
+    );
 
     return res.json({
       status: "ok",
       message: "ลบชมรมเรียบร้อย",
-      rows: result.rowsAffected[0]
+      rows: result.rowsAffected[0],
     });
   } catch (error) {
-    console.error('Error deleting Club:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error("Error deleting Club:", error);
+    return res.status(500).json({ error: "Internal server error" });
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
@@ -854,7 +881,7 @@ app.post("/createactivity/:club_id", async (req, res) => {
 
     const checkQuery = `SELECT activity_name FROM activity WHERE activity_name = @activity_name`;
     const checkRequest = new sql.Request(connection);
-    checkRequest.input('activity_name', sql.VarChar, activity_name);
+    checkRequest.input("activity_name", sql.VarChar, activity_name);
     const checkResult = await checkRequest.query(checkQuery);
 
     if (checkResult.recordset.length > 0) {
@@ -872,15 +899,15 @@ app.post("/createactivity/:club_id", async (req, res) => {
     `;
 
     const insertRequest = new sql.Request(connection);
-    insertRequest.input('activity_name', sql.VarChar, activity_name);
-    insertRequest.input('location', sql.VarChar, location);
-    insertRequest.input('province', sql.VarChar, province);
-    insertRequest.input('start_date', sql.DateTime, start_date);
-    insertRequest.input('finish_date', sql.DateTime, finish_date);
-    insertRequest.input('facebook_contact', sql.VarChar, facebook_contact);
-    insertRequest.input('line_contact', sql.VarChar, line_contact);
-    insertRequest.input('activity_type_id', sql.Int, activity_type_id);
-    insertRequest.input('club_id', sql.Int, club_id);
+    insertRequest.input("activity_name", sql.VarChar, activity_name);
+    insertRequest.input("location", sql.VarChar, location);
+    insertRequest.input("province", sql.VarChar, province);
+    insertRequest.input("start_date", sql.DateTime, start_date);
+    insertRequest.input("finish_date", sql.DateTime, finish_date);
+    insertRequest.input("facebook_contact", sql.VarChar, facebook_contact);
+    insertRequest.input("line_contact", sql.VarChar, line_contact);
+    insertRequest.input("activity_type_id", sql.Int, activity_type_id);
+    insertRequest.input("club_id", sql.Int, club_id);
 
     const insertResult = await insertRequest.query(insertQuery);
 
@@ -926,39 +953,114 @@ app.get("/activity_type", async function (req, res) {
       try {
         await connection.close();
       } catch (error) {
-        console.error('Error closing connection:', error);
+        console.error("Error closing connection:", error);
       }
     }
   }
 });
 
-// app.delete("/deleteclub", async function (req, res) {
-//   let connection;
-//   try {
-//     connection = await create_connection();
-//     const request = connection.request();
-//     request.input('club_id', req.body.club_id);
-    
-//     const result = await request.query("DELETE FROM club WHERE club_id = @club_id");
+app.put("/updateactivity/:activity_id", jsonParser, async (req, res) => {
+  let connection;
+  const {
+    location,
+    province,
+    start_date,
+    finish_date,
+    facebook_contact,
+    line_contact,
+    activity_type_id,
+  } = req.body;
 
-//     return res.json({
-//       status: "ok",
-//       message: "ลบชมรมเรียบร้อย",
-//       rows: result.rowsAffected[0]
-//     });
-//   } catch (error) {
-//     console.error('Error deleting Club:', error);
-//     return res.status(500).json({ error: 'Internal server error' });
-//   } finally {
-//     if (connection) {
-//       try {
-//         await connection.close();
-//       } catch (error) {
-//         console.error('Error closing connection:', error);
-//       }
-//     }
-//   }
-// });
+  const { activity_id } = req.params;
+
+  try {
+    connection = await create_connection();
+
+    const checkQuery = `SELECT activity_id FROM activity WHERE activity_id = @activity_id`;
+    const checkRequest = new sql.Request(connection);
+    checkRequest.input("activity_id", sql.Int, activity_id);
+    const checkResult = await checkRequest.query(checkQuery);
+
+    if (checkResult.recordset.length === 0) {
+      return res.status(404).json({
+        status: "not_found",
+        message: "Activity not found",
+        activity_id: activity_id,
+      });
+    }
+
+    const updateQuery = `
+      UPDATE activity 
+      SET 
+        location = @location,
+        province = @province,
+        start_date = @start_date,
+        finish_date = @finish_date,
+        facebook_contact = @facebook_contact,
+        line_contact = @line_contact,
+        activity_type_id = @activity_type_id
+      WHERE
+        activity_id = @activity_id
+    `;
+
+    const updateRequest = new sql.Request(connection);
+    updateRequest.input("activity_id", sql.Int, activity_id);
+    updateRequest.input("location", sql.VarChar, location);
+    updateRequest.input("province", sql.VarChar, province);
+    updateRequest.input("start_date", sql.DateTime, start_date);
+    updateRequest.input("finish_date", sql.DateTime, finish_date);
+    updateRequest.input("facebook_contact", sql.VarChar, facebook_contact);
+    updateRequest.input("line_contact", sql.VarChar, line_contact);
+    updateRequest.input("activity_type_id", sql.Int, activity_type_id);
+
+    await updateRequest.query(updateQuery);
+
+    // Send a success response
+    res.status(200).json({ status: "ok" });
+  } catch (error) {
+    console.error("Error updating activity:", error);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.delete("/deleteactivity", async function (req, res) {
+  let connection;
+  try {
+    connection = await create_connection();
+    const request = connection.request();
+    request.input("activity_id", req.body.activity_id);
+
+    const result = await request.query(
+      "DELETE FROM activity WHERE activity_id = @activity_id"
+    );
+
+    return res.json({
+      status: "ok",
+      message: "ลบกิจกรรมเรียบร้อย",
+      rows: result.rowsAffected[0],
+    });
+  } catch (error) {
+    console.error("Error deleting Club:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
 
 app.listen(PORT, async () => {
   console.log("CORS-enabled listening on port " + PORT);
