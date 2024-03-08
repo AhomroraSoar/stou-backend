@@ -290,10 +290,10 @@ app.get("/teacherlist", async function (req, res) {
 
     // Query to fetch teacher list along with club information
     let query = `
-      SELECT users.user_id, users.user_name, users.department, users.user_tel, users.lineID, club.club_name 
-      FROM users
-      JOIN club_advisor ON club_advisor.user_id = users.user_id
-      JOIN club ON club_advisor.club_id = club.club_id
+    SELECT club_advisor.advisor_id, club_advisor.advisor_name, club_advisor.department, club_advisor.advisor_tel, club_advisor.line_contact, club.club_name
+    FROM club_advisor
+    JOIN club ON club_advisor.club_id = club.club_id;
+    
     `;
 
     // Execute the query
@@ -411,10 +411,9 @@ app.get("/club/:club_id/teacher", async function (req, res, next) {
   try {
     const club_id = req.params.club_id;
     const query = `
-      SELECT users.user_id, users.user_name 
-      FROM users
-      JOIN club_advisor ON club_advisor.user_id = users.user_id 
-      WHERE club_advisor.club_id = @club_id
+      SELECT advisor_id, advisor_name, department, advisor_tel, line_contact
+      FROM club_advisor
+      WHERE club_id = @club_id
     `;
 
     // Assuming you already have a connection object named 'connection'
@@ -1052,6 +1051,127 @@ app.delete("/deleteactivity", async function (req, res) {
     console.error("Error deleting Club:", error);
     return res.status(500).json({ error: "Internal server error" });
   } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.post("/advisorregister", jsonParser, async (req, res) => {
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    const advisor_id = req.body.advisor_id;
+
+    // Check if email already exists in the database
+    let query = `SELECT advisor_id FROM club_advisor WHERE advisor_id = '${advisor_id}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "Email already exists in the system",
+        email: email,
+      });
+    }
+
+    // Insert new user into the database
+    query = `
+    INSERT INTO club_advisor (advisor_id, advisor_name, department, advisor_tel, line_contact,club_id) 
+    VALUES (
+      '${req.body.advisor_id}',
+      '${req.body.advisor_name}',
+      '${req.body.department}',
+      '${req.body.advisor_tel}',
+      '${req.body.line_contact}',
+      '${req.body.club_id}'
+    )`;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "User registered successfully",
+        user_id: req.body.user_id, // Use the provided user_id
+      });
+    } else {
+      throw new Error("User registration failed");
+    }
+  } catch (error) {
+    console.error("Error during registration:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.post("/advisorregister/club/:club_id", jsonParser, async (req, res) => {
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    const { club_id } = req.params;
+    const advisor_id = req.body.advisor_id;
+
+    // Check if email already exists in the database
+    let query = `SELECT advisor_id FROM club_advisor WHERE advisor_id = '${advisor_id}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "user already exists in the system",
+        advisor_id: advisor_id,
+      });
+    }
+
+    // Insert new user into the database
+    query = `
+    INSERT INTO club_advisor (advisor_id, advisor_name, department, advisor_tel, line_contact,club_id) 
+    VALUES (
+      '${req.body.advisor_id}',
+      '${req.body.advisor_name}',
+      '${req.body.department}',
+      '${req.body.advisor_tel}',
+      '${req.body.line_contact}',
+      '${club_id}'
+    )`;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "User registered successfully",
+        advisor_id: req.body.advisor_id, // Use the provided user_id
+      });
+    } else {
+      throw new Error("User registration failed");
+    }
+  } catch (error) {
+    console.error("Error during registration:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
     if (connection) {
       try {
         await connection.close();
