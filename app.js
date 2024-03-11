@@ -437,10 +437,9 @@ app.get("/club/:club_id/committee", async function (req, res, next) {
   try {
     const club_id = req.params.club_id;
     const query = `
-      SELECT committee_role.committee_role_name, users.user_id, users.user_name 
-      FROM committee_role 
-      INNER JOIN club_committee ON committee_role.committee_role_id = club_committee.committee_role_id 
-      INNER JOIN users ON club_committee.user_id = users.user_id 
+      SELECT club_committee.committee_id,club_committee.committee_name, club_committee.committee_tel, club_committee.committee_line , committee_role.committee_role_name
+      FROM club_committee 
+      JOIN committee_role ON club_committee.committee_role_id = committee_role.committee_role_id  
       WHERE club_committee.club_id = @club_id
     `;
 
@@ -1076,8 +1075,8 @@ app.post("/advisorregister", jsonParser, async (req, res) => {
     if (result.recordset.length > 0) {
       return res.status(400).json({
         status: "registered",
-        message: "Email already exists in the system",
-        email: email,
+        message: "This advisor already exists in the system",
+        advisor_id: advisor_id,
       });
     }
 
@@ -1172,6 +1171,143 @@ app.post("/advisorregister/club/:club_id", jsonParser, async (req, res) => {
       .json({ status: "error", message: "Internal server error" });
   } finally {
     // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.post("/committeeregister", jsonParser, async (req, res) => {
+  let connection;
+  try {
+    connection = await create_connection();
+
+    const committee_name = req.body.committee_name;
+
+    let query = `SELECT committee_name FROM club_committee WHERE committee_name = '${committee_name}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "This committee already exists in the system",
+        committee_name: committee_name,
+      });
+    }
+
+    query = `
+    INSERT INTO club_committee ( committee_name, committee_tel,committee_line,committee_role_id,club_id) 
+    VALUES (
+      '${req.body.committee_name}',
+      '${req.body.committee_tel}',
+      '${req.body.committee_line}',
+      '${req.body.committee_role_id}',
+      '${req.body.club_id}'
+    )`;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "User registered successfully",
+        committee_name: req.body.committee_name,
+      });
+    } else {
+      throw new Error("User registration failed");
+    }
+  } catch (error) {
+    console.error("Error during registration:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.post("/committeeregister/club/:club_id", jsonParser, async (req, res) => {
+  let connection;
+  try {
+    // Create connection
+    connection = await create_connection();
+
+    const { club_id } = req.params;
+    const committee_name = req.body.committee_name;
+
+    let query = `SELECT committee_name FROM club_committee WHERE committee_name = '${committee_name}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: "This committee already exists in the system",
+        committee_name: committee_name,
+      });
+    }
+
+    query = `
+    INSERT INTO club_committee ( committee_name, committee_tel,committee_line,committee_role_id,club_id) 
+    VALUES (
+      '${req.body.committee_name}',
+      '${req.body.committee_tel}',
+      '${req.body.committee_line}',
+      '${req.body.committee_role_id}',
+      '${club_id}'
+    )`;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "User registered successfully",
+        committee_name: req.body.committee_name, // Use the provided user_id
+      });
+    } else {
+      throw new Error("User registration failed");
+    }
+  } catch (error) {
+    console.error("Error during registration:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.get("/committee_role", async function (req, res) {
+  let connection;
+  try {
+    connection = await create_connection();
+
+    const result = await connection.query`SELECT * FROM [committee_role]`;
+    const rows = result.recordset;
+
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data from "committee_role" table:', error);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
     if (connection) {
       try {
         await connection.close();
