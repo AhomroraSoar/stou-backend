@@ -11,9 +11,13 @@ var jsonParser = bodyParser.json();
 const secret = "ระบบกิจการนักศึกษา";
 const bcrypt = require("bcrypt");
 const saltRounds = 10;
+const multer = require("multer");
+const path = require("path");
+
 app.use(cors());
 app.use(express.json());
 app.use(jsonParser);
+app.use('/img-storage', express.static(path.join(__dirname, 'img-storage')));
 
 const config = {
   user: "StuAff",
@@ -1315,6 +1319,74 @@ app.get("/committee_role", async function (req, res) {
         console.error("Error closing connection:", error);
       }
     }
+  }
+});
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "img-storage/");
+  },
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+const upload = multer({ storage: storage });
+
+app.post(
+  "/pictureupload/:activity_id",
+  upload.single("picture"),
+  async (req, res) => {
+    try {
+      const { activity_id } = req.params;
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      await sql.connect(config);
+
+      const pictureUrl = `http://localhost:${PORT}/${req.file.path}`;
+      const request = new sql.Request();
+      request.input("img_url", sql.NVarChar, pictureUrl);
+      request.input("activity_id", sql.Int, activity_id);
+      await request.query(
+        "INSERT INTO img_storage (img_url, activity_id) VALUES (@img_url, @activity_id)"
+      );
+
+      // Send a success response with the URL of the uploaded file
+      res.json({ img_url: pictureUrl });
+    } catch (error) {
+      console.error("Error uploading picture:", error);
+      res.status(500).json({ error: "Internal server error" });
+    } finally {
+      sql.close();
+    }
+  }
+);
+
+app.get('/images/:activity_id', async (req, res) => {
+  const { activity_id } = req.params;
+
+  try {
+
+    connection = await create_connection();
+
+    const result = await connection.request()
+      .input('activity_id', sql.Int, activity_id)
+      .query('SELECT img_id, img_url FROM img_storage WHERE activity_id = @activity_id');
+
+    // Retrieve the image URLs from the query result
+    const images = result.recordset;
+
+    // Send the retrieved image URLs as JSON response
+    res.json(images);
+  } catch (error) {
+    console.error('Error fetching images:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
