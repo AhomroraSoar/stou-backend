@@ -13,6 +13,7 @@ const bcrypt = require("bcrypt");
 const saltRounds = 10;
 const multer = require("multer");
 const path = require("path");
+const fs = require('fs');
 
 app.use(cors());
 app.use(express.json());
@@ -1364,7 +1365,6 @@ app.post(
         'INSERT INTO img_storage (img_url, activity_id) VALUES (@img_url, @activity_id)'
       );
 
-      // Send a success response with the URL of the uploaded file
       res.json({ img_url: pictureUrl });
     } catch (error) {
       console.error('Error uploading picture:', error);
@@ -1388,10 +1388,8 @@ app.get("/images/:activity_id", async (req, res) => {
         "SELECT img_id, img_url FROM img_storage WHERE activity_id = @activity_id"
       );
 
-    // Retrieve the image URLs from the query result
     const images = result.recordset;
 
-    // Send the retrieved image URLs as JSON response
     res.json(images);
   } catch (error) {
     console.error("Error fetching images:", error);
@@ -1399,24 +1397,32 @@ app.get("/images/:activity_id", async (req, res) => {
   }
 });
 
-app.delete("/deleteimage", async function (req, res, next) {
+app.delete("/deleteimage/:img_id", async function (req, res, next) {
   let connection;
   try {
     connection = await create_connection();
     const request = connection.request();
-    request.input("img_id", req.body.img_id);
+    const img_id = req.params.img_id;
 
-    const result = await request.query(
-      "DELETE FROM img_storage WHERE img_id = @img_id"
-    );
+    const getimageUrl = `SELECT img_url FROM img_storage WHERE img_id = @img_id`;
+    const imageUrlResult = await request.input("img_id",img_id).query(getimageUrl)
+    const imageUrl = imageUrlResult.recordset[0].img_url;
+
+    const relativePath = imageUrl.split("http://localhost:4000")[1];
+
+    const deleteimageQuery = `DELETE FROM img_storage WHERE img_id = @img_id`;
+    const deleteResult = await request.query(deleteimageQuery);
+
+    const imagePath = path.join(__dirname, relativePath);
+    fs.unlinkSync(imagePath);
 
     return res.json({
       status: "ok",
       message: "ลบรูปภาพเรียบร้อย",
-      rows: result.rowsAffected[0],
+      rows: deleteResult.rowsAffected[0],
     });
   } catch (error) {
-    console.error("Error deleting SWN:", error);
+    console.error("Error deleting image:", error);
     return res.status(500).json({ error: "Internal server error" });
   } finally {
     if (connection) {
