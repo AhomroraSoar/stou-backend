@@ -83,6 +83,27 @@ const authenticateJWT = (req, res, next) => {
   }
 };
 
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "img-storage/");
+  },
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+const imageFilter = function (req, file, cb) {
+  if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
+    return cb(new Error('Only image files are allowed!'), false);
+  }
+  cb(null, true);
+};
+
+const upload = multer({ storage: storage, fileFilter: imageFilter });
+
 app.post("/auth", function (req, res, next) {
   try {
     const token = req.headers.authorization.split(" ")[1];
@@ -1065,6 +1086,29 @@ app.delete("/deleteactivity", async function (req, res) {
   }
 });
 
+app.get("/clublist", async function (req, res) {
+  let connection;
+  try {
+    connection = await create_connection();
+
+    const result = await connection.query`SELECT * FROM [club]`;
+    const rows = result.recordset;
+
+    return res.json(rows);
+  } catch (error) {
+    console.error('Error fetching data from "committee_role" table:', error);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
 app.post("/advisorregister", jsonParser, async (req, res) => {
   let connection;
   try {
@@ -1073,7 +1117,6 @@ app.post("/advisorregister", jsonParser, async (req, res) => {
 
     const advisor_id = req.body.advisor_id;
 
-    // Check if email already exists in the database
     let query = `SELECT advisor_id FROM club_advisor WHERE advisor_id = '${advisor_id}'`;
     let result = await connection.query(query);
 
@@ -1085,7 +1128,6 @@ app.post("/advisorregister", jsonParser, async (req, res) => {
       });
     }
 
-    // Insert new user into the database
     query = `
     INSERT INTO club_advisor (advisor_id, advisor_name, department, advisor_tel, line_contact,club_id) 
     VALUES (
@@ -1102,8 +1144,8 @@ app.post("/advisorregister", jsonParser, async (req, res) => {
     if (result.rowsAffected[0] === 1) {
       return res.status(200).json({
         status: "ok",
-        message: "User registered successfully",
-        user_id: req.body.user_id, // Use the provided user_id
+        message: "Advisor registered successfully",
+        advisor_id: req.body.advisor_id,
       });
     } else {
       throw new Error("User registration failed");
@@ -1323,31 +1365,7 @@ app.get("/committee_role", async function (req, res) {
   }
 });
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "img-storage/");
-  },
-  filename: function (req, file, cb) {
-    cb(
-      null,
-      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-    );
-  },
-});
-
-const imageFilter = function (req, file, cb) {
-  if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
-    return cb(new Error('Only image files are allowed!'), false);
-  }
-  cb(null, true);
-};
-
-const upload = multer({ storage: storage, fileFilter: imageFilter });
-
-app.post(
-  '/pictureupload/:activity_id',
-  upload.single('picture'),
-  async (req, res) => {
+app.post('/pictureupload/:activity_id',upload.single('picture'),async (req, res) => {
     try {
       const { activity_id } = req.params;
 
