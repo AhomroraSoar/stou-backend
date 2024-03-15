@@ -1073,7 +1073,7 @@ app.delete("/deleteactivity", async function (req, res) {
       rows: result.rowsAffected[0],
     });
   } catch (error) {
-    console.error("Error deleting Club:", error);
+    console.error("Error deleting Club:", error);  
     return res.status(500).json({ error: "Internal server error" });
   } finally {
     if (connection) {
