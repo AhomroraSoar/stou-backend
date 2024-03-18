@@ -1,4 +1,5 @@
 var express = require("express");
+const ldap = require("ldap-authentication");
 var cors = require("cors");
 var bodyParser = require("body-parser");
 const sql = require("mssql");
@@ -13,7 +14,7 @@ const bcrypt = require("bcrypt");
 const saltRounds = 10;
 const multer = require("multer");
 const path = require("path");
-const fs = require('fs');
+const fs = require("fs");
 
 app.use(cors());
 app.use(express.json());
@@ -97,7 +98,7 @@ const storage = multer.diskStorage({
 
 const imageFilter = function (req, file, cb) {
   if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/)) {
-    return cb(new Error('Only image files are allowed!'), false);
+    return cb(new Error("Only image files are allowed!"), false);
   }
   cb(null, true);
 };
@@ -192,13 +193,48 @@ app.post("/register", jsonParser, async (req, res) => {
   }
 });
 
+app.post("/loginAD", jsonParser, async function (req, res, next) {
+  try {
+
+    const ldapConfig = {
+      ldapOpts: {
+        url: 'ldap://202.28.103.39',
+        reconnect: true
+      },
+      userDn: req.body.username,  
+      userPassword: req.body.password,
+      // userSearchBase:'ou=AD_USER', //พนต้องเข้ามาแก้
+      // usernameAttribute: 'admin'
+    };
+
+    const auth = await ldap.authenticate(ldapConfig);
+    console.log('LDAP Authentication:', auth);
+
+    if (auth) {
+      const token = jwt.sign({ username: req.body.username }, secret, { expiresIn: '1h' });
+      const searchResult = await ldap.search({
+        ...ldapConfig,
+        searchFilter: '(objectClass=*)',
+        attributes: ['*']
+      });
+      console.log('Search Result:', searchResult);
+
+      return res.json({ status: "success", message: "LDAP authentication successful", token: token ,user: searchResult });
+    } else {
+
+      return res.status(401).json({ status: "error", message: "LDAP authentication failed" });
+    }
+  } catch (error) {
+    console.error("Error during login:", error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
+  }
+});
+
 app.post("/login", jsonParser, async function (req, res, next) {
   let connection;
   try {
-    // Create connection
     connection = await create_connection();
 
-    // Query user by email
     const result =
       await connection.query`SELECT * FROM users WHERE [email] = ${req.body.email}`;
     const user = result.recordset;
@@ -210,7 +246,6 @@ app.post("/login", jsonParser, async function (req, res, next) {
       });
     }
 
-    // Compare passwords
     const match = await bcrypt.compare(req.body.password, user[0].password);
     if (match) {
       const token = jwt.sign({ email: user[0].email }, secret, {
@@ -231,7 +266,7 @@ app.post("/login", jsonParser, async function (req, res, next) {
       .status(500)
       .json({ status: "error", message: "Internal server error" });
   } finally {
-    // Close connection
+
     if (connection) {
       try {
         await connection.close();
@@ -986,6 +1021,7 @@ app.get("/activity_type", async function (req, res) {
 app.put("/updateactivity/:activity_id", jsonParser, async (req, res) => {
   let connection;
   const {
+    activity_name,
     location,
     province,
     start_date,
@@ -1016,6 +1052,7 @@ app.put("/updateactivity/:activity_id", jsonParser, async (req, res) => {
     const updateQuery = `
       UPDATE activity 
       SET 
+        activity_name = @activity_name,
         location = @location,
         province = @province,
         start_date = @start_date,
@@ -1029,6 +1066,7 @@ app.put("/updateactivity/:activity_id", jsonParser, async (req, res) => {
 
     const updateRequest = new sql.Request(connection);
     updateRequest.input("activity_id", sql.Int, activity_id);
+    updateRequest.input("activity_name", sql.VarChar, activity_name);
     updateRequest.input("location", sql.VarChar, location);
     updateRequest.input("province", sql.VarChar, province);
     updateRequest.input("start_date", sql.DateTime, start_date);
@@ -1073,7 +1111,7 @@ app.delete("/deleteactivity", async function (req, res) {
       rows: result.rowsAffected[0],
     });
   } catch (error) {
-    console.error("Error deleting Club:", error);  
+    console.error("Error deleting Club:", error);
     return res.status(500).json({ error: "Internal server error" });
   } finally {
     if (connection) {
@@ -1365,28 +1403,31 @@ app.get("/committee_role", async function (req, res) {
   }
 });
 
-app.post('/pictureupload/:activity_id',upload.single('picture'),async (req, res) => {
+app.post(
+  "/pictureupload/:activity_id",
+  upload.single("picture"),
+  async (req, res) => {
     try {
       const { activity_id } = req.params;
 
       if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
+        return res.status(400).json({ error: "No file uploaded" });
       }
 
       await sql.connect(config);
 
       const pictureUrl = `http://localhost:${PORT}/${req.file.path}`;
       const request = new sql.Request();
-      request.input('img_url', sql.NVarChar, pictureUrl);
-      request.input('activity_id', sql.Int, activity_id);
+      request.input("img_url", sql.NVarChar, pictureUrl);
+      request.input("activity_id", sql.Int, activity_id);
       await request.query(
-        'INSERT INTO img_storage (img_url, activity_id) VALUES (@img_url, @activity_id)'
+        "INSERT INTO img_storage (img_url, activity_id) VALUES (@img_url, @activity_id)"
       );
 
       res.json({ img_url: pictureUrl });
     } catch (error) {
-      console.error('Error uploading picture:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      console.error("Error uploading picture:", error);
+      res.status(500).json({ error: "Internal server error" });
     } finally {
       sql.close();
     }
@@ -1423,7 +1464,9 @@ app.delete("/deleteimage/:img_id", async function (req, res, next) {
     const img_id = req.params.img_id;
 
     const getimageUrl = `SELECT img_url FROM img_storage WHERE img_id = @img_id`;
-    const imageUrlResult = await request.input("img_id",img_id).query(getimageUrl)
+    const imageUrlResult = await request
+      .input("img_id", img_id)
+      .query(getimageUrl);
     const imageUrl = imageUrlResult.recordset[0].img_url;
 
     const relativePath = imageUrl.split("http://localhost:4000")[1];
