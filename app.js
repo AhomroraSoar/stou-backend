@@ -9,8 +9,10 @@ var connection = {};
 var app = express();
 var jwt = require("jsonwebtoken");
 var jsonParser = bodyParser.json();
-const secret = "ระบบกิจการนักศึกษา";
+const secret = "STOUstudentclubDevbyAhomrora(passwordencrypt)";
+const encryptionKey = 'STOUstudentclubDevbyAhomrora(userDataencrypt)';
 const bcrypt = require("bcrypt");
+const CryptoJS = require("crypto-js");
 const saltRounds = 10;
 const multer = require("multer");
 const path = require("path");
@@ -194,71 +196,97 @@ app.post("/register", jsonParser, async (req, res) => {
 });
 
 app.post("/loginAD", jsonParser, async function (req, res, next) {
-  try {
-
-    const ldapConfig = {
-      ldapOpts: {
-        url: 'ldap://202.28.103.39',
-        reconnect: true
-      },
-      userDn: req.body.username,  
-      userPassword: req.body.password,
-      // userSearchBase:'ou=AD_USER', //พนต้องเข้ามาแก้
-      // usernameAttribute: 'admin'
-    };
-
-    const auth = await ldap.authenticate(ldapConfig);
-    console.log('LDAP Authentication:', auth);
-
-    if (auth) {
-      const token = jwt.sign({ username: req.body.username }, secret, { expiresIn: '1h' });
-      const searchResult = await ldap.search({
-        ...ldapConfig,
-        searchFilter: '(objectClass=*)',
-        attributes: ['*']
-      });
-      console.log('Search Result:', searchResult);
-
-      return res.json({ status: "success", message: "LDAP authentication successful", token: token ,user: searchResult });
-    } else {
-
-      return res.status(401).json({ status: "error", message: "LDAP authentication failed" });
-    }
-  } catch (error) {
-    console.error("Error during login:", error);
-    return res.status(500).json({ status: "error", message: "Internal server error" });
-  }
-});
-
-app.post("/login", jsonParser, async function (req, res, next) {
   let connection;
   try {
-    connection = await create_connection();
+    const ldapConfig = {
+      ldapOpts: {
+        url: "ldap://202.28.103.39",
+        reconnect: true,
+      },
+      userDn: req.body.username,
+      userPassword: req.body.password,
+    };
 
-    const result =
-      await connection.query`SELECT * FROM users WHERE [email] = ${req.body.email}`;
-    const user = result.recordset;
-
-    if (user.length === 0) {
-      return res.json({
-        status: "error",
-        message: "Email not found in the system",
-      });
+    let auth = false;
+    try {
+      auth = await ldap.authenticate(ldapConfig);
+      console.log("LDAP Authentication:", auth);
+    } catch (ldapError) {
+      // Handle LDAP authentication errors
+      console.error("LDAP Authentication Error:", ldapError.message);
     }
 
-    const match = await bcrypt.compare(req.body.password, user[0].password);
-    if (match) {
-      const token = jwt.sign({ email: user[0].email }, secret, {
+    if (auth) {
+      const token = jwt.sign({ username: req.body.username }, secret, {
         expiresIn: "1h",
       });
+
+      // Establishing database connection
+      connection = await create_connection();
+
+      // Querying the database
+      const query = `
+        SELECT * FROM ADusers 
+        JOIN department ON ADusers.department_id = department.department_id 
+        WHERE username = @username
+      `;
+
+      const result = await connection
+        .request()
+        .input("username", sql.VarChar, req.body.username)
+        .query(query);
+
+      if (result.recordset.length === 0) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "User not found in database" });
+      }
+
+      // Assuming result contains user data from the database
+      const userData = result.recordset[0];
+      const encryptedUserData = CryptoJS.AES.encrypt(JSON.stringify(userData), encryptionKey).toString();
+
+
+      // Here you can send back the user data along with the token
       return res.json({
         status: "success",
-        message: "Welcome",
-        token,
-        user: user[0],
+        message: "LDAP authentication successful",
+        token: token,
+        userData: encryptedUserData,
       });
     } else {
-      return res.json({ status: "error", message: "Invalid password" });
+      // If LDAP authentication fails, fallback to regular login
+      if (!connection) {
+        connection = await create_connection();
+      }
+
+      const result = await connection.query`
+        SELECT * FROM users WHERE [username] = ${req.body.username}
+      `;
+      const userData = result.recordset[0];
+      const encryptedUserData = CryptoJS.AES.encrypt(JSON.stringify(userData), encryptionKey).toString();
+
+      if (userData.length === 0) {
+        return res.json({
+          status: "error",
+          message: "Email not found in the system",
+        });
+      }
+
+      const match = await bcrypt.compare(req.body.password, userData.password);
+      if (match) {
+        const token = jwt.sign({ username: userData.username }, secret, {
+          expiresIn: "1h",
+        });
+        return res.json({
+          status: "success",
+          message: "Welcome",
+          token,
+          userData: encryptedUserData,
+        });
+      } else {
+        return res.json({ status: "error", message: "Invalid password" });
+      }
     }
   } catch (error) {
     console.error("Error during login:", error);
@@ -266,7 +294,6 @@ app.post("/login", jsonParser, async function (req, res, next) {
       .status(500)
       .json({ status: "error", message: "Internal server error" });
   } finally {
-
     if (connection) {
       try {
         await connection.close();
@@ -276,6 +303,53 @@ app.post("/login", jsonParser, async function (req, res, next) {
     }
   }
 });
+
+// app.post("/login", jsonParser, async function (req, res, next) {
+//   let connection;
+//   try {
+//     connection = await create_connection();
+
+//     const result =
+//       await connection.query`SELECT * FROM users WHERE [email] = ${req.body.email}`;
+//     const user = result.recordset;
+
+//     if (user.length === 0) {
+//       return res.json({
+//         status: "error",
+//         message: "Email not found in the system",
+//       });
+//     }
+
+//     const match = await bcrypt.compare(req.body.password, user[0].password);
+//     if (match) {
+//       const token = jwt.sign({ email: user[0].email }, secret, {
+//         expiresIn: "1h",
+//       });
+//       return res.json({
+//         status: "success",
+//         message: "Welcome",
+//         token,
+//         user: user[0],
+//       });
+//     } else {
+//       return res.json({ status: "error", message: "Invalid password" });
+//     }
+//   } catch (error) {
+//     console.error("Error during login:", error);
+//     return res
+//       .status(500)
+//       .json({ status: "error", message: "Internal server error" });
+//   } finally {
+
+//     if (connection) {
+//       try {
+//         await connection.close();
+//       } catch (error) {
+//         console.error("Error closing connection:", error);
+//       }
+//     }
+//   }
+// });
 
 app.post("/reset-password", jsonParser, async (req, res) => {
   let connection;
