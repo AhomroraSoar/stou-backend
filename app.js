@@ -10,9 +10,7 @@ var app = express();
 var jwt = require("jsonwebtoken");
 var jsonParser = bodyParser.json();
 const secret = "STOUstudentclubDevbyAhomrora(passwordencrypt)";
-const encryptionKey = 'STOUstudentclubDevbyAhomrora(userDataencrypt)';
 const bcrypt = require("bcrypt");
-const CryptoJS = require("crypto-js");
 const saltRounds = 10;
 const multer = require("multer");
 const path = require("path");
@@ -153,10 +151,10 @@ app.post("/register", jsonParser, async (req, res) => {
 
     // Insert new user into the database
     query = `
-    INSERT INTO users (user_id, user_name, user_age, user_career, department, program, user_address, email, password, user_tel) 
+    INSERT INTO users (user_id, name, user_age, user_career, department, program, user_address, email, password, user_tel) 
     VALUES (
       '${req.body.user_id}',
-      '${req.body.user_name}',
+      '${req.body.name}',
       ${req.body.user_age},
       '${req.body.user_career}',
       '${req.body.department}',
@@ -195,6 +193,7 @@ app.post("/register", jsonParser, async (req, res) => {
   }
 });
 
+//
 app.post("/loginAD", jsonParser, async function (req, res, next) {
   let connection;
   try {
@@ -212,7 +211,7 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
       auth = await ldap.authenticate(ldapConfig);
       console.log("LDAP Authentication:", auth);
     } catch (ldapError) {
-      // Handle LDAP authentication errors
+
       console.error("LDAP Authentication Error:", ldapError.message);
     }
 
@@ -221,12 +220,10 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
         expiresIn: "1h",
       });
 
-      // Establishing database connection
       connection = await create_connection();
 
-      // Querying the database
       const query = `
-        SELECT * FROM ADusers 
+        SELECT ADusers.user_id, ADusers.name,ADusers.role_id FROM ADusers 
         JOIN department ON ADusers.department_id = department.department_id 
         WHERE username = @username
       `;
@@ -242,29 +239,23 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
           .json({ status: "error", message: "User not found in database" });
       }
 
-      // Assuming result contains user data from the database
       const userData = result.recordset[0];
-      const encryptedUserData = CryptoJS.AES.encrypt(JSON.stringify(userData), encryptionKey).toString();
 
-
-      // Here you can send back the user data along with the token
       return res.json({
         status: "success",
         message: "LDAP authentication successful",
         token: token,
-        userData: encryptedUserData,
+        userData: userData,
       });
     } else {
-      // If LDAP authentication fails, fallback to regular login
       if (!connection) {
         connection = await create_connection();
       }
 
       const result = await connection.query`
-        SELECT * FROM users WHERE [username] = ${req.body.username}
+        SELECT users.user_id,users.username, users.password, users.name, FROM users WHERE [username] = ${req.body.username}
       `;
       const userData = result.recordset[0];
-      const encryptedUserData = CryptoJS.AES.encrypt(JSON.stringify(userData), encryptionKey).toString();
 
       if (userData.length === 0) {
         return res.json({
@@ -282,7 +273,7 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
           status: "success",
           message: "Welcome",
           token,
-          userData: encryptedUserData,
+          userData: userData,
         });
       } else {
         return res.json({ status: "error", message: "Invalid password" });
@@ -518,7 +509,7 @@ app.get("/activity/:activity_id", async function (req, res, next) {
   try {
     const activity_id = req.params.activity_id;
     const query = `
-      SELECT users.user_id, users.user_name, activity.club_id 
+      SELECT users.user_id, users.name, activity.club_id 
       FROM users
       JOIN activity_participants ON activity_participants.user_id = users.user_id 
       JOIN activity ON activity_participants.activity_id = activity.activity_id 
@@ -655,7 +646,7 @@ app.get("/clubmember/:club_id", async function (req, res, next) {
   try {
     const club_id = req.params.club_id;
     const query = `
-      SELECT users.user_id, users.user_name 
+      SELECT users.user_id, users.name 
       FROM users 
       JOIN club_member ON club_member.user_id = users.user_id 
       WHERE club_member.club_id = @club_id
