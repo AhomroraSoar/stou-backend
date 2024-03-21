@@ -132,10 +132,10 @@ app.post("/register", jsonParser, async (req, res) => {
     // Create connection
     connection = await create_connection();
 
-    const email = req.body.email;
+    const STOUemail = req.body.email;
 
     // Check if email already exists in the database
-    let query = `SELECT email FROM users WHERE email = '${email}'`;
+    let query = `SELECT STOUemail FROM users WHERE STOUemail = '${STOUemail}'`;
     let result = await connection.query(query);
 
     if (result.recordset.length > 0) {
@@ -211,7 +211,6 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
       auth = await ldap.authenticate(ldapConfig);
       console.log("LDAP Authentication:", auth);
     } catch (ldapError) {
-
       console.error("LDAP Authentication Error:", ldapError.message);
     }
 
@@ -223,9 +222,9 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
       connection = await create_connection();
 
       const query = `
-        SELECT ADusers.user_id, ADusers.name,ADusers.role_id FROM ADusers 
-        JOIN department ON ADusers.department_id = department.department_id 
-        WHERE username = @username
+        SELECT users.user_id, users.name,users.role_id FROM users 
+        JOIN department ON users.department_id = department.department_id 
+        WHERE STOUemail = @username
       `;
 
       const result = await connection
@@ -253,7 +252,7 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
       }
 
       const result = await connection.query`
-        SELECT users.user_id,users.username, users.password, users.name, FROM users WHERE [username] = ${req.body.username}
+        SELECT users.user_id,users.STOUemail, users.password, users.name FROM users WHERE [STOUemail] = ${req.body.username}
       `;
       const userData = result.recordset[0];
 
@@ -266,7 +265,7 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
 
       const match = await bcrypt.compare(req.body.password, userData.password);
       if (match) {
-        const token = jwt.sign({ username: userData.username }, secret, {
+        const token = jwt.sign({ username: userData.STOUemail }, secret, {
           expiresIn: "1h",
         });
         return res.json({
@@ -690,52 +689,65 @@ app.get("/activitydetail/:activity_id", async function (req, res, next) {
 
 app.post("/activity/:activity_id/register", jsonParser, async (req, res) => {
   try {
-    const activityID = req.params.activity_id;
-    const userData = req.headers["user"];
+      const activityID = req.params.activity_id;
+      const userData = req.headers["user"];
 
-    if (!activityID || !userData) {
-      throw new Error("Activity ID and User data are required");
-    }
+      if (!activityID) {
+          throw new Error("Activity ID is required");
+      } else if (!userData) {
+          throw new Error("User data not detected");
+      }
 
-    const userDataObj = JSON.parse(userData);
-    const connection = await create_connection();
+      const userDataObj = JSON.parse(userData);
 
-    // Create a new request object
-    const request = connection.request();
+      // Check if user_id is present and valid
+      // if (!userDataObj || !userDataObj.user_id || typeof userDataObj.user_id !== 'string') {
+      //     throw new Error("Invalid user ID");
+      // }
 
-    // Bind parameters
-    request.input("activityID", sql.Int, activityID);
-    request.input("user_id", sql.VarChar, userDataObj.user_id);
+      const user_id = userDataObj.user_id.toString();
+      console.log(user_id);
 
-    // Check if the user is already registered for the activity
-    const result = await request.query(
-      "SELECT * FROM activity_participants WHERE activity_id = @activityID AND user_id = @user_id"
-    );
+      const connection = await create_connection();
 
-    if (result.recordset.length > 0) {
-      return res.status(400).json({
-        status: "registered",
-        message: `User with ID ${userDataObj.user_id} is already registered for this activity`,
+      // Create a new request object
+      const request = connection.request();
+
+      // Bind parameters
+      request.input("activityID", sql.Int, activityID);
+      request.input("user_id", sql.VarChar, user_id); // Adjust data type as needed
+
+      // Check if the user is already registered for the activity
+      const result = await request.query(
+          "SELECT * FROM activity_participants WHERE activity_id = @activityID AND user_id = @user_id"
+      );
+
+      if (result.recordset.length > 0) {
+          return res.status(400).json({
+              status: "registered",
+              message: `User with ID ${user_id} is already registered for this activity`,
+          });
+      }
+
+      // Insert the user as a participant for the activity
+      await request.query(
+          "INSERT INTO activity_participants (activity_id, user_id) VALUES (@activityID, @user_id)"
+      );
+
+      res.status(200).json({
+          status: "ok",
+          message: `User with ID ${user_id} successfully registered for the activity`,
       });
-    }
-
-    // Insert the user as a participant for the activity
-    await request.query(
-      "INSERT INTO activity_participants (activity_id, user_id) VALUES (@activityID, @user_id)"
-    );
-
-    res.status(200).json({
-      status: "ok",
-      message: `User with ID ${userDataObj.user_id} successfully registered for the activity`,
-    });
   } catch (error) {
-    console.error("Error registering user to the activity:", error);
-    res.status(500).json({
-      status: "error",
-      message: "Internal server error",
-    });
+      console.error("Error registering user to the activity:", error);
+      res.status(500).json({
+          status: "error",
+          message: "Internal server error",
+      });
   }
 });
+
+
 
 app.post("/createswn", async (req, res) => {
   let connection;
