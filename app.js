@@ -115,28 +115,18 @@ app.post("/auth", function (req, res, next) {
   }
 });
 
-app.post("/auth/user", authenticateJWT, (req, res) => {
-  const email = req.user.email;
-  connection.query(
-    "SELECT * FROM `users` WHERE `email` = ?",
-    [email],
-    function (err, results) {
-      res.json(results);
-    }
-  );
-});
-
 app.post("/register", jsonParser, async (req, res) => {
   let connection;
   try {
     // Create connection
     connection = await create_connection();
 
-    const STOUemail = req.body.email;
+    const email = req.body.email;
+    const hash_password = await bcrypt.hash(req.body.password, saltRounds); // Hash the password
 
     // Check if email already exists in the database
-    let query = `SELECT STOUemail FROM users WHERE STOUemail = '${STOUemail}'`;
-    let result = await connection.query(query);
+    let query = "SELECT email FROM users WHERE email = @email";
+    let result = await connection.request().input("email", email).query(query);
 
     if (result.recordset.length > 0) {
       return res.status(400).json({
@@ -146,32 +136,41 @@ app.post("/register", jsonParser, async (req, res) => {
       });
     }
 
-    // Hash the password
-    const hash_password = await bcrypt.hash(req.body.password, saltRounds);
-
-    // Insert new user into the database
+    // Insert new user into the database using parameterized query
     query = `
-    INSERT INTO users (user_id, name, user_age, user_career, department, program, user_address, email, password, user_tel) 
+    INSERT INTO users (user_uid, email, password, name, age, career, department_id, program, tel, address) 
     VALUES (
-      '${req.body.user_id}',
-      '${req.body.name}',
-      ${req.body.user_age},
-      '${req.body.user_career}',
-      '${req.body.department}',
-      '${req.body.program}',
-      '${req.body.user_address}',
-      '${email}',
-      '${hash_password}',
-      '${req.body.user_tel}'
+      @user_uid,
+      @email,
+      @hash_password,
+      @name,
+      @age,
+      @career,
+      @department_id,
+      @program,
+      @tel,
+      @address
     )`;
 
-    result = await connection.query(query);
+    result = await connection
+      .request()
+      .input("user_uid", req.body.user_uid)
+      .input("email", email)
+      .input("hash_password", hash_password)
+      .input("name", req.body.name)
+      .input("age", req.body.age)
+      .input("career", req.body.career)
+      .input("department_id", req.body.department_id)
+      .input("program", req.body.program)
+      .input("tel", req.body.tel)
+      .input("address", req.body.address)
+      .query(query);
 
     if (result.rowsAffected[0] === 1) {
       return res.status(200).json({
         status: "ok",
         message: "User registered successfully",
-        user_id: req.body.user_id, // Use the provided user_id
+        name: req.body.name,
       });
     } else {
       throw new Error("User registration failed");
@@ -193,7 +192,6 @@ app.post("/register", jsonParser, async (req, res) => {
   }
 });
 
-//
 app.post("/loginAD", jsonParser, async function (req, res, next) {
   let connection;
   try {
@@ -202,7 +200,7 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
         url: "ldap://202.28.103.39",
         reconnect: true,
       },
-      userDn: req.body.username,
+      userDn: req.body.email, // Assuming the email is used for LDAP authentication
       userPassword: req.body.password,
     };
 
@@ -215,21 +213,20 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
     }
 
     if (auth) {
-      const token = jwt.sign({ username: req.body.username }, secret, {
+      const token = jwt.sign({ username: req.body.email }, secret, {
         expiresIn: "1h",
       });
 
       connection = await create_connection();
 
       const query = `
-        SELECT users.user_id, users.name,users.role_id FROM users 
-        JOIN department ON users.department_id = department.department_id 
-        WHERE STOUemail = @username
+        SELECT users.user_id, users.name, users.role_id FROM users 
+        WHERE email = @email
       `;
 
       const result = await connection
         .request()
-        .input("username", sql.VarChar, req.body.username)
+        .input("email", sql.VarChar, req.body.email) // Using req.body.email for the query
         .query(query);
 
       if (result.recordset.length === 0) {
@@ -251,21 +248,27 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
         connection = await create_connection();
       }
 
-      const result = await connection.query`
-        SELECT users.user_id,users.STOUemail, users.password, users.name FROM users WHERE [STOUemail] = ${req.body.username}
+      const query = `
+        SELECT users.user_id, users.email, users.password, users.name FROM users WHERE email = @email
       `;
-      const userData = result.recordset[0];
 
-      if (userData.length === 0) {
+      const result = await connection
+        .request()
+        .input("email", sql.VarChar, req.body.email) // Using req.body.email for the query
+        .query(query);
+
+      if (result.recordset.length === 0) {
         return res.json({
           status: "error",
           message: "Email not found in the system",
         });
       }
 
+      const userData = result.recordset[0];
+
       const match = await bcrypt.compare(req.body.password, userData.password);
       if (match) {
-        const token = jwt.sign({ username: userData.STOUemail }, secret, {
+        const token = jwt.sign({ username: userData.email }, secret, {
           expiresIn: "1h",
         });
         return res.json({
@@ -588,7 +591,7 @@ app.get("/club/:club_id/committee", async function (req, res, next) {
 app.post("/club/:club_id/register", jsonParser, async (req, res) => {
   try {
     const clubId = req.params.club_id;
-    const userDataHeader = req.headers["user"];
+    const userDataHeader = req.headers["userData"];
 
     if (!clubId || !userDataHeader) {
       throw new Error("Club ID and User data are required");
@@ -689,65 +692,63 @@ app.get("/activitydetail/:activity_id", async function (req, res, next) {
 
 app.post("/activity/:activity_id/register", jsonParser, async (req, res) => {
   try {
-      const activityID = req.params.activity_id;
-      const userData = req.headers["user"];
+    const activityID = req.params.activity_id;
+    const userData = req.headers["user"];
 
-      if (!activityID) {
-          throw new Error("Activity ID is required");
-      } else if (!userData) {
-          throw new Error("User data not detected");
-      }
+    if (!activityID) {
+      throw new Error("Activity ID is required");
+    } else if (!userData) {
+      throw new Error("User data not detected");
+    }
 
-      const userDataObj = JSON.parse(userData);
+    const userDataObj = JSON.parse(userData);
 
-      // Check if user_id is present and valid
-      // if (!userDataObj || !userDataObj.user_id || typeof userDataObj.user_id !== 'string') {
-      //     throw new Error("Invalid user ID");
-      // }
+    // Check if user_id is present and valid
+    // if (!userDataObj || !userDataObj.user_id || typeof userDataObj.user_id !== 'string') {
+    //     throw new Error("Invalid user ID");
+    // }
 
-      const user_id = userDataObj.user_id.toString();
-      console.log(user_id);
+    const user_id = userDataObj.user_id.toString();
+    console.log(user_id);
 
-      const connection = await create_connection();
+    const connection = await create_connection();
 
-      // Create a new request object
-      const request = connection.request();
+    // Create a new request object
+    const request = connection.request();
 
-      // Bind parameters
-      request.input("activityID", sql.Int, activityID);
-      request.input("user_id", sql.VarChar, user_id); // Adjust data type as needed
+    // Bind parameters
+    request.input("activityID", sql.Int, activityID);
+    request.input("user_id", sql.VarChar, user_id); // Adjust data type as needed
 
-      // Check if the user is already registered for the activity
-      const result = await request.query(
-          "SELECT * FROM activity_participants WHERE activity_id = @activityID AND user_id = @user_id"
-      );
+    // Check if the user is already registered for the activity
+    const result = await request.query(
+      "SELECT * FROM activity_participants WHERE activity_id = @activityID AND user_id = @user_id"
+    );
 
-      if (result.recordset.length > 0) {
-          return res.status(400).json({
-              status: "registered",
-              message: `User with ID ${user_id} is already registered for this activity`,
-          });
-      }
-
-      // Insert the user as a participant for the activity
-      await request.query(
-          "INSERT INTO activity_participants (activity_id, user_id) VALUES (@activityID, @user_id)"
-      );
-
-      res.status(200).json({
-          status: "ok",
-          message: `User with ID ${user_id} successfully registered for the activity`,
+    if (result.recordset.length > 0) {
+      return res.status(400).json({
+        status: "registered",
+        message: `User with ID ${user_id} is already registered for this activity`,
       });
+    }
+
+    // Insert the user as a participant for the activity
+    await request.query(
+      "INSERT INTO activity_participants (activity_id, user_id) VALUES (@activityID, @user_id)"
+    );
+
+    res.status(200).json({
+      status: "ok",
+      message: `User with ID ${user_id} successfully registered for the activity`,
+    });
   } catch (error) {
-      console.error("Error registering user to the activity:", error);
-      res.status(500).json({
-          status: "error",
-          message: "Internal server error",
-      });
+    console.error("Error registering user to the activity:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+    });
   }
 });
-
-
 
 app.post("/createswn", async (req, res) => {
   let connection;
@@ -1563,6 +1564,220 @@ app.delete("/deleteimage/:img_id", async function (req, res, next) {
     console.error("Error deleting image:", error);
     return res.status(500).json({ error: "Internal server error" });
   } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.delete("/deleteadvisor", async function (req, res) {
+  let connection;
+  try {
+    connection = await create_connection();
+    const request = connection.request();
+    request.input("advisor_id", req.body.advisor_id);
+
+    const result = await request.query(
+      "DELETE FROM club_advisor WHERE advisor_id = @advisor_id"
+    );
+
+    return res.json({
+      status: "ok",
+      message: "ลบอาจารย์ที่ปรึกษาเรียบร้อย",
+      rows: result.rowsAffected[0],
+    });
+  } catch (error) {
+    console.error("Error deleting Advisor:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.get("/advisor/:advisor_id", async function (req, res) {
+  try {
+    const advisor_id = req.params.advisor_id;
+
+    let connection = await create_connection();
+
+    let query = `
+    SELECT *
+    FROM club_advisor
+    WHERE advisor_id = '${advisor_id}'
+    `;
+
+    let result = await connection.query(query);
+
+    return res.json(result.recordset);
+  } catch (error) {
+    console.error("Error fetching advisor data :", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.put("/advisorupdate/:advisor_id", jsonParser, async (req, res) => {
+  let connection;
+  try {
+    connection = await create_connection();
+
+    const advisor_id = req.params.advisor_id;
+
+    let query = `SELECT advisor_id FROM club_advisor WHERE advisor_id = '${advisor_id}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({
+        status: "not_found",
+        message: "Advisor not found",
+        advisor_id: advisor_id,
+      });
+    }
+
+    query = `
+    UPDATE club_advisor 
+    SET 
+      advisor_id = '${req.body.advisor_id}',
+      advisor_name = '${req.body.advisor_name}',
+      department = '${req.body.department}',
+      advisor_tel = '${req.body.advisor_tel}',
+      line_contact = '${req.body.line_contact}'
+    WHERE advisor_id = '${advisor_id}'`;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "Advisor updated successfully",
+        advisor_id: advisor_id,
+      });
+    } else {
+      throw new Error("Advisor update failed");
+    }
+  } catch (error) {
+    console.error("Error during advisor update:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.delete("/deletecommittee", async function (req, res) {
+  let connection;
+  try {
+    connection = await create_connection();
+    const request = connection.request();
+    request.input("committee_id", req.body.committee_id);
+
+    const result = await request.query(
+      "DELETE FROM club_committee WHERE committee_id = @committee_id"
+    );
+
+    return res.json({
+      status: "ok",
+      message: "ลบคณะกรรมการเรียบร้อย",
+      rows: result.rowsAffected[0],
+    });
+  } catch (error) {
+    console.error("Error deleting committee:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        console.error("Error closing connection:", error);
+      }
+    }
+  }
+});
+
+app.get("/committee/:committee_id", async function (req, res) {
+  try {
+    const committee_id = req.params.committee_id;
+
+    let connection = await create_connection();
+
+    let query = `
+    SELECT *
+    FROM club_committee
+    JOIN committee_role ON club_committee.committee_role_id = committee_role.committee_role_id
+    WHERE committee_id = '${committee_id}'
+    `;
+
+    let result = await connection.query(query);
+
+    return res.json(result.recordset);
+  } catch (error) {
+    console.error("Error fetching committee data :", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.put("/committeeupdate/:committee_id", jsonParser, async (req, res) => {
+  let connection;
+  try {
+    connection = await create_connection();
+
+    const committee_id = req.params.committee_id;
+
+    let query = `SELECT committee_id FROM club_committee WHERE committee_id = '${committee_id}'`;
+    let result = await connection.query(query);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({
+        status: "not_found",
+        message: "Committee not found",
+        committee_id: committee_id,
+      });
+    }
+
+    query = `
+    UPDATE club_committee
+    SET
+    committee_name = '${req.body.committee_name}',
+    committee_tel = '${req.body.committee_tel}',
+    committee_line = '${req.body.committee_line}',
+    committee_role_id = '${req.body.committee_role_id}'
+    WHERE committee_id = '${committee_id}'`;
+
+    result = await connection.query(query);
+
+    if (result.rowsAffected[0] === 1) {
+      return res.status(200).json({
+        status: "ok",
+        message: "Committee updated successfully",
+        committee_id: committee_id,
+      });
+    } else {
+      throw new Error("Committee update failed");
+    }
+  } catch (error) {
+    console.error("Error during Committee update:", error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  } finally {
+    // Close connection
     if (connection) {
       try {
         await connection.close();
