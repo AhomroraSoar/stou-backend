@@ -1172,24 +1172,67 @@ app.put("/updateactivity/:activity_id", jsonParser, async (req, res) => {
   }
 });
 
+// app.delete("/deleteactivity", async function (req, res) {
+//   let connection;
+//   try {
+//     connection = await create_connection();
+//     const request = connection.request();
+//     request.input("activity_id", req.body.activity_id);
+
+//     const result = await request.query(
+//       "DELETE FROM activity WHERE activity_id = @activity_id"
+//     );
+
+//     return res.json({
+//       status: "ok",
+//       message: "ลบกิจกรรมเรียบร้อย",
+//       rows: result.rowsAffected[0],
+//     });
+//   } catch (error) {
+//     console.error("Error deleting Club:", error);
+//     return res.status(500).json({ error: "Internal server error" });
+//   } finally {
+//     if (connection) {
+//       try {
+//         await connection.close();
+//       } catch (error) {
+//         console.error("Error closing connection:", error);
+//       }
+//     }
+//   }
+// });
+
 app.delete("/deleteactivity", async function (req, res) {
   let connection;
   try {
     connection = await create_connection();
     const request = connection.request();
-    request.input("activity_id", req.body.activity_id);
+    const activity_id = req.body.activity_id;
 
-    const result = await request.query(
-      "DELETE FROM activity WHERE activity_id = @activity_id"
-    );
+    // Delete images from local storage
+    const getImagesQuery = `SELECT img_url FROM img_storage WHERE activity_id = @activity_id`;
+    const imagesResult = await request
+      .input("activity_id", activity_id)
+      .query(getImagesQuery);
+    
+    for (const image of imagesResult.recordset) {
+      const relativePath = image.img_url.split("http://localhost:4000")[1];
+      const imagePath = path.join(__dirname, relativePath);
+      fs.unlinkSync(imagePath);
+    }
+
+    // Delete activity and associated images from database
+    const deleteActivityQuery = `DELETE FROM activity WHERE activity_id = @activity_id`;
+    const result = await request
+      .query(deleteActivityQuery);
 
     return res.json({
       status: "ok",
-      message: "ลบกิจกรรมเรียบร้อย",
+      message: "ลบกิจกรรมและรูปภาพที่เกี่ยวข้องเรียบร้อย",
       rows: result.rowsAffected[0],
     });
   } catch (error) {
-    console.error("Error deleting Club:", error);
+    console.error("Error deleting activity:", error);
     return res.status(500).json({ error: "Internal server error" });
   } finally {
     if (connection) {
@@ -1201,6 +1244,7 @@ app.delete("/deleteactivity", async function (req, res) {
     }
   }
 });
+
 
 app.get("/clublist", async function (req, res) {
   let connection;
@@ -1299,7 +1343,7 @@ app.post("/advisorregister/club/:club_id", jsonParser, async (req, res) => {
     if (result.recordset.length > 0) {
       return res.status(400).json({
         status: "registered",
-        message: "user already exists in the system",
+        message: "this advisor already exists in the system",
         advisor_id: advisor_id,
       });
     }
@@ -1321,11 +1365,11 @@ app.post("/advisorregister/club/:club_id", jsonParser, async (req, res) => {
     if (result.rowsAffected[0] === 1) {
       return res.status(200).json({
         status: "ok",
-        message: "User registered successfully",
+        message: "Advisor added successfully",
         advisor_id: req.body.advisor_id, // Use the provided user_id
       });
     } else {
-      throw new Error("User registration failed");
+      throw new Error("failed to add advisor");
     }
   } catch (error) {
     console.error("Error during registration:", error);
