@@ -138,7 +138,7 @@ app.post("/register", jsonParser, async (req, res) => {
 
     // Insert new user into the database using parameterized query
     query = `
-    INSERT INTO users (user_uid, email, password, name, age, career, department_id, program, tel, address) 
+    INSERT INTO users (user_uid, email, password, name, age, career, faculty_id, curriculum_id, tel, address) 
     VALUES (
       @user_uid,
       @email,
@@ -146,8 +146,8 @@ app.post("/register", jsonParser, async (req, res) => {
       @name,
       @age,
       @career,
-      @department_id,
-      @program,
+      @faculty_id,
+      @curriculum_id,
       @tel,
       @address
     )`;
@@ -160,8 +160,8 @@ app.post("/register", jsonParser, async (req, res) => {
       .input("name", req.body.name)
       .input("age", req.body.age)
       .input("career", req.body.career)
-      .input("department_id", req.body.department_id)
-      .input("program", req.body.program)
+      .input("faculty_id", req.body.faculty_id)
+      .input("curriculum_id", req.body.curriculum_id)
       .input("tel", req.body.tel)
       .input("address", req.body.address)
       .query(query);
@@ -296,53 +296,6 @@ app.post("/loginAD", jsonParser, async function (req, res, next) {
     }
   }
 });
-
-// app.post("/login", jsonParser, async function (req, res, next) {
-//   let connection;
-//   try {
-//     connection = await create_connection();
-
-//     const result =
-//       await connection.query`SELECT * FROM users WHERE [email] = ${req.body.email}`;
-//     const user = result.recordset;
-
-//     if (user.length === 0) {
-//       return res.json({
-//         status: "error",
-//         message: "Email not found in the system",
-//       });
-//     }
-
-//     const match = await bcrypt.compare(req.body.password, user[0].password);
-//     if (match) {
-//       const token = jwt.sign({ email: user[0].email }, secret, {
-//         expiresIn: "1h",
-//       });
-//       return res.json({
-//         status: "success",
-//         message: "Welcome",
-//         token,
-//         user: user[0],
-//       });
-//     } else {
-//       return res.json({ status: "error", message: "Invalid password" });
-//     }
-//   } catch (error) {
-//     console.error("Error during login:", error);
-//     return res
-//       .status(500)
-//       .json({ status: "error", message: "Internal server error" });
-//   } finally {
-
-//     if (connection) {
-//       try {
-//         await connection.close();
-//       } catch (error) {
-//         console.error("Error closing connection:", error);
-//       }
-//     }
-//   }
-// });
 
 app.post("/reset-password", jsonParser, async (req, res) => {
   let connection;
@@ -591,10 +544,12 @@ app.get("/club/:club_id/committee", async function (req, res, next) {
 app.post("/club/:club_id/register", jsonParser, async (req, res) => {
   try {
     const clubId = req.params.club_id;
-    const userDataHeader = req.headers["userData"];
+    const userDataHeader = req.headers["user"];
 
-    if (!clubId || !userDataHeader) {
-      throw new Error("Club ID and User data are required");
+    if (!clubId) {
+      throw new Error("Club ID are required");
+    } else if (!userDataHeader) {
+      throw new Error("User data are required");
     }
 
     const userData = JSON.parse(userDataHeader);
@@ -603,7 +558,7 @@ app.post("/club/:club_id/register", jsonParser, async (req, res) => {
 
     const request = connection.request();
     request.input("club_id", sql.Int, clubId);
-    request.input("user_id", sql.VarChar, userData.user_id); // Adjust type to VARCHAR
+    request.input("user_id", sql.Int, userData.user_id); // Adjust type to VARCHAR
 
     const existingRegistrationsResult = await request.query(
       "SELECT * FROM club_member WHERE club_id = @club_id AND user_id = @user_id"
@@ -703,11 +658,6 @@ app.post("/activity/:activity_id/register", jsonParser, async (req, res) => {
 
     const userDataObj = JSON.parse(userData);
 
-    // Check if user_id is present and valid
-    // if (!userDataObj || !userDataObj.user_id || typeof userDataObj.user_id !== 'string') {
-    //     throw new Error("Invalid user ID");
-    // }
-
     const user_id = userDataObj.user_id.toString();
     console.log(user_id);
 
@@ -718,7 +668,7 @@ app.post("/activity/:activity_id/register", jsonParser, async (req, res) => {
 
     // Bind parameters
     request.input("activityID", sql.Int, activityID);
-    request.input("user_id", sql.VarChar, user_id); // Adjust data type as needed
+    request.input("user_id", sql.Int, user_id);
 
     // Check if the user is already registered for the activity
     const result = await request.query(
@@ -1214,7 +1164,7 @@ app.delete("/deleteactivity", async function (req, res) {
     const imagesResult = await request
       .input("activity_id", activity_id)
       .query(getImagesQuery);
-    
+
     for (const image of imagesResult.recordset) {
       const relativePath = image.img_url.split("http://localhost:4000")[1];
       const imagePath = path.join(__dirname, relativePath);
@@ -1223,8 +1173,7 @@ app.delete("/deleteactivity", async function (req, res) {
 
     // Delete activity and associated images from database
     const deleteActivityQuery = `DELETE FROM activity WHERE activity_id = @activity_id`;
-    const result = await request
-      .query(deleteActivityQuery);
+    const result = await request.query(deleteActivityQuery);
 
     return res.json({
       status: "ok",
@@ -1244,7 +1193,6 @@ app.delete("/deleteactivity", async function (req, res) {
     }
   }
 });
-
 
 app.get("/clublist", async function (req, res) {
   let connection;
